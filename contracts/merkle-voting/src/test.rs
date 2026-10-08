@@ -14,6 +14,7 @@ fn hash_vote(e: &Env, data: &VoteData) -> BytesN<32> {
 #[test]
 fn test_merkle_voting() {
     let e = Env::default();
+    e.mock_all_auths();
 
     let voter1 = Address::generate(&e);
     let voter2 = Address::generate(&e);
@@ -43,4 +44,18 @@ fn test_merkle_voting() {
     let (votes_pro, votes_against) = client.get_vote_results();
     assert_eq!(votes_pro, 100);
     assert_eq!(votes_against, 50);
+}
+
+#[test]
+#[should_panic]
+fn test_vote_rejects_missing_voter_authorization() {
+    let e = Env::default();
+    let voter = Address::generate(&e);
+    let vote = VoteData { index: 0, account: voter, voting_power: 10 };
+    let root = hash_vote(&e, &vote);
+    let contract_id = e.register(MerkleVoting, (root,));
+    let client = MerkleVotingClient::new(&e, &contract_id);
+
+    // A valid voter/proof cannot be used without that voter's signature.
+    client.vote(&vote, &Vec::new(&e), &true);
 }
