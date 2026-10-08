@@ -4,14 +4,17 @@
 //! implementing a capped mint mechanism, and setting the maximum supply
 //! at the constructor.
 //!
-//! **IMPORTANT**: this example is for demonstration purposes, and authorization
-//! is not taken into consideration
+//! Minting is restricted to the owner recorded at construction (the `admin`
+//! argument): every `mint` call must be authorized by that address.
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Symbol};
 use stellar_tokens::fungible::{
     capped::{check_cap, set_cap},
     Base, FungibleToken,
 };
+
+/// Storage key for the address allowed to mint.
+pub const OWNER: Symbol = symbol_short!("OWNER");
 
 #[contract]
 pub struct ExampleContract;
@@ -34,11 +37,23 @@ impl ExampleContract {
         // Mint initial supply to admin
         Base::mint(e, &admin, initial_supply);
 
+        // Record the owner allowed to mint additional supply.
+        e.storage().instance().set(&OWNER, &admin);
+
         // Note: manager parameter included for consistency with other token types
         let _ = manager; // Silence unused warning
     }
 
     pub fn mint(e: &Env, account: Address, amount: i128) {
+        // When `ownable` module is available, the following check should be
+        // equivalent to: `ownable::only_owner(&e);`
+        let owner: Address = e
+            .storage()
+            .instance()
+            .get(&OWNER)
+            .expect("owner should be set");
+        owner.require_auth();
+
         check_cap(e, amount);
         Base::mint(e, &account, amount);
     }
