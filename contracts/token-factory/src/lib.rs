@@ -704,6 +704,16 @@ impl TokenFactory {
 mod test {
     use super::*;
     use soroban_sdk::{testutils::{Address as _, Events}, Env, String};
+    // Capped and Vault token WASMs are produced by `stellar contract build`
+    // into the workspace `target/wasm32v1-none/release/` directory.
+    mod fungible_capped_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/fungible_capped_example.wasm");
+    }
+
+    mod fungible_vault_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/fungible_vault_example.wasm");
+    }
+
 
     fn setup_factory(env: &Env) -> (TokenFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -726,6 +736,68 @@ mod test {
 
         (client, admin, wasm_hash)
     }
+
+    // ===== Capped / Vault Success-Path Tests =====
+
+    #[test]
+    fn test_deploy_capped_and_vault_tokens_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_factory(&env);
+
+        let capped_hash = env.deployer().upload_contract_wasm(fungible_capped_wasm::WASM);
+        let vault_hash = env.deployer().upload_contract_wasm(fungible_vault_wasm::WASM);
+        client.set_capped_wasm(&admin, &capped_hash);
+        client.set_vault_wasm(&admin, &vault_hash);
+
+        // Capped: (admin, manager, initial_supply, cap, name, symbol, decimals).
+        let capped_config = TokenConfig {
+            token_type: TokenType::Capped,
+            admin: admin.clone(),
+            manager: admin.clone(),
+            initial_supply: 1_000_000,
+            cap: Some(5_000_000),
+            name: String::from_str(&env, "Capped Token"),
+            symbol: String::from_str(&env, "CAP"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[61u8; 32]),
+            asset: None,
+            decimals_offset: None,
+        };
+        let capped_address = client.deploy_token(&admin, &capped_config);
+
+        // Vault: (asset, decimals_offset).
+        let asset = Address::generate(&env);
+        let vault_config = TokenConfig {
+            token_type: TokenType::Vault,
+            admin: admin.clone(),
+            manager: admin.clone(),
+            initial_supply: 0,
+            cap: None,
+            name: String::from_str(&env, "Vault Token"),
+            symbol: String::from_str(&env, "VLT"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[62u8; 32]),
+            asset: Some(asset),
+            decimals_offset: Some(2),
+        };
+        let vault_address = client.deploy_token(&admin, &vault_config);
+
+        // Both deployments are recorded with their own type and address.
+        let tokens = client.get_deployed_tokens();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens.get(0).unwrap().token_type, TokenType::Capped);
+        assert_eq!(tokens.get(0).unwrap().address, capped_address);
+        assert_eq!(tokens.get(1).unwrap().token_type, TokenType::Vault);
+        assert_eq!(tokens.get(1).unwrap().address, vault_address);
+        assert_ne!(capped_address, vault_address);
+
+        // The Capped constructor received initial_supply in the right slot.
+        let capped = fungible_capped_wasm::Client::new(&env, &capped_address);
+        assert_eq!(capped.total_supply(), 1_000_000);
+    }
+
 
     // ===== Constructor Tests =====
 
@@ -1306,7 +1378,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #21)")] // ContractPaused
+    #[should_panic(expected = "Error(Contract, #18)")] // ContractPaused
     fn test_security_pause_prevents_deployment() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1408,7 +1480,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #20)")] // NotPendingAdmin
+    #[should_panic(expected = "Error(Contract, #17)")] // NotPendingAdmin
     fn test_twostep_admin_transfer_wrong_acceptor() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1425,7 +1497,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #19)")] // NoPendingAdmin
+    #[should_panic(expected = "Error(Contract, #16)")] // NoPendingAdmin
     fn test_twostep_admin_transfer_accept_without_initiate() {
         let env = Env::default();
         env.mock_all_auths();
