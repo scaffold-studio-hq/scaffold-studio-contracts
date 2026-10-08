@@ -527,7 +527,10 @@ const getScValsFromArgs = (
       }
 
       // TUPLE CASE
-      const isTupleArray = argValue.every((v: AnyObject) => v.type && v.value);
+      const isTupleArray = argValue.every(
+        (v: AnyObject) =>
+          v !== null && typeof v === "object" && "type" in v && "value" in v,
+      );
       if (isTupleArray) {
         const tupleScValsVec = convertTupleToScVal(argValue);
 
