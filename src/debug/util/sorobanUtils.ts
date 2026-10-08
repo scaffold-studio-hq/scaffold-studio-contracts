@@ -386,8 +386,12 @@ const convertObjectToMap = (
         const valueScVal = getScValFromArg(pair["1"], []);
         acc[pair["0"].value] = valueScVal;
       } else {
-        acc[pair["0"].value] =
-          (pair["1"] as { value: string }).value === "true";
+        const valuePair = pair["1"] as { value?: unknown; type?: string };
+        if (valuePair?.type === "bool") {
+          acc[pair["0"].value] = valuePair.value === "true";
+        } else {
+          acc[pair["0"].value] = valuePair?.value;
+        }
       }
       return acc;
     },
