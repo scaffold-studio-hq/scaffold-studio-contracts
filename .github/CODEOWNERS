@@ -1,0 +1,16 @@
+# Code ownership routing.
+# Everything defaults to the maintainers of this repository.
+
+*                              @scaffold-studio-hq
+
+# Deployed, value-bearing Soroban contracts.
+/contracts/                    @scaffold-studio-hq
+
+# CI that runs on every PR.
+/.github/workflows/            @scaffold-studio-hq
+
+# Root manifests / lockfiles.
+/Cargo.toml                    @scaffold-studio-hq
+/Cargo.lock                    @scaffold-studio-hq
+/package.json                  @scaffold-studio-hq
+/package-lock.json             @scaffold-studio-hq
