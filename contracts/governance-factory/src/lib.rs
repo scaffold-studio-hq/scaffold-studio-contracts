@@ -855,4 +855,49 @@ mod test {
         client.accept_admin_transfer(&admin3);
         assert_eq!(client.get_admin(), admin3);
     }
+
+    // ===== Pause/Unpause Tests =====
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #8)")]
+    fn test_deploy_governance_panics_while_paused() {
+        let env = Env::default();
+        let (client, admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::MerkleVoting,
+            admin: admin.clone(),
+            root_hash: Some(BytesN::from_array(&env, &[9u8; 32])),
+            owners: None,
+            threshold: None,
+            salt: BytesN::from_array(&env, &[3u8; 32]),
+        };
+
+        client.pause(&admin);
+        client.deploy_governance(&deployer, &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_deploy_governance_passes_pause_gate_after_unpause() {
+        let env = Env::default();
+        let (client, admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        // root_hash: None for MerkleVoting -> InvalidConfig (#4). Reaching #4
+        // proves the call passed the paused check; while paused it fails at #8.
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::MerkleVoting,
+            admin: admin.clone(),
+            root_hash: None,
+            owners: None,
+            threshold: None,
+            salt: BytesN::from_array(&env, &[4u8; 32]),
+        };
+
+        client.pause(&admin);
+        client.unpause(&admin);
+        client.deploy_governance(&deployer, &config);
+    }
 }
