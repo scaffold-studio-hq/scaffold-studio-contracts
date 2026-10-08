@@ -374,7 +374,7 @@ const convertObjectToScVal = (obj: Record<string, unknown>): xdr.ScVal => {
 
 type MapPair = {
   "0": { value: string; type: string };
-  "1": { value?: string; type?: string } | unknown[] | boolean;
+  "1": { value?: unknown; type?: string } | unknown[] | boolean;
 };
 
 const convertObjectToMap = (
@@ -385,9 +385,17 @@ const convertObjectToMap = (
       if (Array.isArray(pair["1"])) {
         const valueScVal = getScValFromArg(pair["1"], []);
         acc[pair["0"].value] = valueScVal;
+      } else if (typeof pair["1"] === "boolean") {
+        // An already-decoded boolean should never be changed.
+        acc[pair["0"].value] = pair["1"];
       } else {
+        const typedValue = pair["1"] as { value?: unknown; type?: string };
+        // Only boolean values need coercion from the form's string input.
+        // Keep strings, addresses, numeric inputs and other typed values intact.
         acc[pair["0"].value] =
-          (pair["1"] as { value: string }).value === "true";
+          typedValue.type === "bool"
+            ? typedValue.value === true || typedValue.value === "true"
+            : typedValue.value;
       }
       return acc;
     },
