@@ -44,3 +44,35 @@ fn test_merkle_voting() {
     assert_eq!(votes_pro, 100);
     assert_eq!(votes_against, 50);
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_vote_rejects_zero_voting_power() {
+    let e = Env::default();
+
+    let voter = Address::generate(&e);
+    let vote = VoteData { index: 0, account: voter.clone(), voting_power: 0 };
+    let leaf = hash_vote(&e, &vote);
+
+    let contract_id = e.register(MerkleVoting, (leaf,));
+    let client = MerkleVotingClient::new(&e, &contract_id);
+
+    let proof = Vec::<BytesN<32>>::new(&e);
+    client.vote(&vote, &proof, &true);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_vote_rejects_negative_voting_power() {
+    let e = Env::default();
+
+    let voter = Address::generate(&e);
+    let vote = VoteData { index: 1, account: voter.clone(), voting_power: -5 };
+    let leaf = hash_vote(&e, &vote);
+
+    let contract_id = e.register(MerkleVoting, (leaf,));
+    let client = MerkleVotingClient::new(&e, &contract_id);
+
+    let proof = Vec::<BytesN<32>>::new(&e);
+    client.vote(&vote, &proof, &false);
+}

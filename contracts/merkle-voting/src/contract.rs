@@ -15,7 +15,7 @@
 //!
 //! This pattern is useful for snapshot-based governance systems or off-chain
 //! voter lists.
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Vec};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Vec};
 use stellar_contract_utils::{
     crypto::sha256::Sha256,
     merkle_distributor::{IndexableLeaf, MerkleDistributor},
@@ -28,6 +28,8 @@ type Distributor = MerkleDistributor<Sha256>;
 pub struct VoteData {
     pub index: u32,
     pub account: Address,
+    /// Weight added to the tally when this vote is cast. Must be strictly
+    /// positive; [`MerkleVoting::vote`] rejects any value `<= 0`.
     pub voting_power: i128,
 }
 
@@ -35,6 +37,17 @@ impl IndexableLeaf for VoteData {
     fn index(&self) -> u32 {
         self.index
     }
+}
+
+/// Errors returned by [`MerkleVoting`].
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum MerkleVotingError {
+    /// The supplied `VoteData.voting_power` was not strictly positive.
+    InvalidVotingPower = 1,
+    /// Adding the voting power overflowed the running tally.
+    VoteTallyOverflow = 2,
 }
 
 #[contracttype]
@@ -55,21 +68,33 @@ impl MerkleVoting {
     }
 
     pub fn vote(e: &Env, vote_data: VoteData, proof: Vec<BytesN<32>>, approve: bool) {
+        // Reject non-positive voting power before mutating any tally. The tally
+        // accumulators are signed and the leaf is supplied by the caller, so a
+        // `voting_power <= 0` entry would otherwise let a vote subtract from the
+        // opposing total.
+        if vote_data.voting_power <= 0 {
+            panic_with_error!(e, MerkleVotingError::InvalidVotingPower);
+        }
+
         // Verify merkle proof using the MerkleDistributor
         Distributor::verify_and_set_claimed(e, vote_data.clone(), proof);
 
         // Update vote totals
         if approve {
             let current_pro: i128 = e.storage().instance().get(&DataKey::TotalVotesPro).unwrap();
-            e.storage()
-                .instance()
-                .set(&DataKey::TotalVotesPro, &(current_pro + vote_data.voting_power));
+            let updated_pro = current_pro
+                .checked_add(vote_data.voting_power)
+                .unwrap_or_else(|| panic_with_error!(e, MerkleVotingError::VoteTallyOverflow));
+            e.storage().instance().set(&DataKey::TotalVotesPro, &updated_pro);
         } else {
             let current_against: i128 =
                 e.storage().instance().get(&DataKey::TotalVotesAgainst).unwrap();
+            let updated_against = current_against
+                .checked_add(vote_data.voting_power)
+                .unwrap_or_else(|| panic_with_error!(e, MerkleVotingError::VoteTallyOverflow));
             e.storage()
                 .instance()
-                .set(&DataKey::TotalVotesAgainst, &(current_against + vote_data.voting_power));
+                .set(&DataKey::TotalVotesAgainst, &updated_against);
         }
     }
 
