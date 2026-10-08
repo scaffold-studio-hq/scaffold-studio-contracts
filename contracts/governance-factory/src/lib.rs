@@ -627,6 +627,7 @@ mod test {
         let config = GovernanceConfig {
             governance_type: GovernanceType::Multisig,
             admin,
+            root_hash: None,
             owners: None, // Missing
             threshold: Some(2),
             salt,
@@ -654,6 +655,7 @@ mod test {
         let config = GovernanceConfig {
             governance_type: GovernanceType::Multisig,
             admin,
+            root_hash: None,
             owners: Some(owners),
             threshold: None, // Missing
             salt,
@@ -681,6 +683,7 @@ mod test {
         let config = GovernanceConfig {
             governance_type: GovernanceType::Multisig,
             admin,
+            root_hash: None,
             owners: Some(owners),
             threshold: Some(0), // Invalid: 0
             salt,
@@ -708,6 +711,7 @@ mod test {
         let config = GovernanceConfig {
             governance_type: GovernanceType::Multisig,
             admin,
+            root_hash: None,
             owners: Some(owners),
             threshold: Some(3), // Invalid: > owners.len()
             salt,
@@ -730,6 +734,7 @@ mod test {
         let config = GovernanceConfig {
             governance_type: GovernanceType::MerkleVoting,
             admin,
+            root_hash: None,
             owners: None,
             threshold: None,
             salt,
@@ -854,5 +859,72 @@ mod test {
         client.initiate_admin_transfer(&admin2, &admin3);
         client.accept_admin_transfer(&admin3);
         assert_eq!(client.get_admin(), admin3);
+    }
+
+    /// The Merkle Voting branch requires a `root_hash`; without it the deploy
+    /// is rejected with `GovernanceFactoryError::InvalidConfig` (`Contract, #4`).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_deploy_merkle_voting_missing_root_hash() {
+        let env = Env::default();
+        let (client, _admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[9u8; 32]);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::MerkleVoting,
+            admin,
+            root_hash: None, // Missing
+            owners: None,
+            threshold: None,
+            salt,
+        };
+
+        client.deploy_governance(&deployer, &config);
+    }
+
+    /// Exercises the Merkle Voting deployment branch with a `root_hash`: after
+    /// config validation passes, the constructor tuple `(root_hash,)` is built
+    /// and `deploy_v2` is reached. With a plain `cargo test` run the configured
+    /// WASM hash is not a real uploaded artifact, so the host rejects the deploy
+    /// and nothing is recorded.
+    ///
+    /// NOTE: asserting a *successful* Merkle Voting deployment (and the recorded
+    /// `GovernanceInfo`) requires a compiled contract WASM
+    /// (`contractimport!`/`stellar contract build`), which this workspace does
+    /// not build for unit tests; this test pins the reachable behaviour up to
+    /// that host boundary.
+    #[test]
+    fn test_deploy_merkle_voting_with_root_hash_reaches_deploy_v2() {
+        let env = Env::default();
+        let (client, _admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[10u8; 32]);
+        let root_hash = BytesN::from_array(&env, &[3u8; 32]);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::MerkleVoting,
+            admin,
+            root_hash: Some(root_hash),
+            owners: None,
+            threshold: None,
+            salt,
+        };
+
+        // Reaches `deploy_v2` (config validation passed); the placeholder WASM
+        // hash is not a real uploaded module, so the host fails the deploy.
+        let result = client.try_deploy_governance(&deployer, &config);
+        assert!(result.is_err());
+
+        // A failed deployment records nothing.
+        assert_eq!(client.get_governance_count(), 0);
+        assert_eq!(
+            client.get_governance_by_type(&GovernanceType::MerkleVoting).len(),
+            0
+        );
     }
 }
