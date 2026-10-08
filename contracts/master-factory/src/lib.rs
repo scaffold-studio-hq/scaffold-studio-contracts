@@ -601,6 +601,18 @@ impl MasterFactory {
 mod test {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
+    // The TokenFactory WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod token_factory_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/token_factory.wasm");
+    }
+
+    // The NFTFactory WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod nft_factory_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/nft_factory.wasm");
+    }
+
 
     fn setup_master_factory(env: &Env) -> (MasterFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -608,6 +620,41 @@ mod test {
         let client = MasterFactoryClient::new(env, &contract_id);
         (client, admin)
     }
+
+    // ===== Salt Deduplication Tests =====
+
+    #[test]
+    fn test_deploy_rejects_a_reused_salt() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_master_factory(&env);
+
+        let token_hash = env.deployer().upload_contract_wasm(token_factory_wasm::WASM);
+        let nft_hash = env.deployer().upload_contract_wasm(nft_factory_wasm::WASM);
+        let reused_salt = BytesN::from_array(&env, &[41u8; 32]);
+        let fresh_salt = BytesN::from_array(&env, &[42u8; 32]);
+
+        // The first deployment marks the salt as used.
+        let token_factory = client.deploy_token_factory(&admin, &token_hash, &reused_salt);
+        assert_eq!(client.get_token_factory(), Some(token_factory));
+
+        // Reusing the salt is rejected even for a different factory type, so
+        // the failure cannot be the already-deployed guard.
+        let err: MasterFactoryError = client
+            .try_deploy_nft_factory(&admin, &nft_hash, &reused_salt)
+            .unwrap_err()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        assert_eq!(err, MasterFactoryError::DuplicateSalt);
+        assert_eq!(client.get_nft_factory(), None);
+
+        // A fresh salt still deploys.
+        let nft_factory = client.deploy_nft_factory(&admin, &nft_hash, &fresh_salt);
+        assert_eq!(client.get_nft_factory(), Some(nft_factory));
+    }
+
 
     // ===== Constructor Tests =====
 
