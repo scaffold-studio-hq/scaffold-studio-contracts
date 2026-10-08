@@ -10,7 +10,7 @@ Production-ready Soroban blueprints powering our conversational factory system f
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Stellar](https://img.shields.io/badge/Stellar-Soroban-7D00FF)](https://stellar.org)
-[![Rust](https://img.shields.io/badge/Rust-1.79+-000000)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.89+-000000)](https://www.rust-lang.org/)
 
 [Quick Start](#quick-start) • [Architecture](#architecture) • [Contracts](#contracts) • [Deployment](#deployment)
 
@@ -449,7 +449,7 @@ __constructor(root_hash)
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) 1.79+
+- [Rust](https://www.rust-lang.org/tools/install) 1.89+ (the version pinned in [`rust-toolchain.toml`](./rust-toolchain.toml))
 - [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools)
 - [Docker](https://www.docker.com/) (for local network)
 - [Node.js](https://nodejs.org/) 22+ (for TypeScript packages)
