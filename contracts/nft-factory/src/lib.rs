@@ -689,6 +689,9 @@ mod test {
             admin: None, // Missing
             manager: Some(manager),
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
@@ -711,6 +714,9 @@ mod test {
             admin: Some(admin),
             manager: None, // Missing
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
@@ -732,6 +738,9 @@ mod test {
             admin: None, // Missing
             manager: None,
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
@@ -754,6 +763,9 @@ mod test {
             admin: None,
             manager: None,
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
