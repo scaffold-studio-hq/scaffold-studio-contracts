@@ -27,7 +27,7 @@ Stellar Studio Contracts is a comprehensive suite of production-ready Soroban sm
 - 5 Token Contract Types (Pausable, Capped, Allowlist, Blocklist, Vault)
 - 3 NFT Contract Types (Enumerable, Royalties, AccessControl)
 - 1 Governance System (MerkleVoting)
-- Auto-generated TypeScript clients for all contracts
+- TypeScript clients generated at build time for all contracts (not checked into the repository)
 
 ---
 
@@ -141,7 +141,7 @@ Top-level factory that deploys other factories.
 - `deploy_governance_factory(admin)` - Deploy new GovernanceFactory
 - `get_deployed_factories()` - List all factory addresses
 
-**TypeScript Package:** `packages/master_factory`
+**Generated TypeScript package:** `packages/master_factory`
 
 ---
 
@@ -163,7 +163,7 @@ Deploys fungible token contracts with various access control mechanisms.
 - `get_tokens_by_admin(admin)` - Filter by admin
 - `get_token_count()` - Total deployment count
 
-**TypeScript Package:** `packages/token_factory`
+**Generated TypeScript package:** `packages/token_factory`
 
 ---
 
@@ -183,7 +183,7 @@ Deploys ERC-721 compatible NFT collection contracts.
 - `get_nfts_by_owner(owner)` - Filter by owner
 - `get_nft_count()` - Total deployment count
 
-**TypeScript Package:** `packages/nft_factory`
+**Generated TypeScript package:** `packages/nft_factory`
 
 ---
 
@@ -200,7 +200,7 @@ Deploys DAO governance contracts for on-chain voting.
 - `get_governance_by_type(type)` - Filter by type
 - `get_governance_by_admin(admin)` - Filter by admin
 
-**TypeScript Package:** `packages/governance_factory`
+**Generated TypeScript package:** `packages/governance_factory`
 
 ---
 
@@ -228,7 +228,7 @@ __constructor(admin, manager, initial_supply, name, symbol, decimals)
 - `transfer(from, to, amount)` - Transfer tokens
 - `mint(account, amount)` - Mint new tokens
 
-**Package:** `packages/fungible_pausable_example`
+**Generated package:** `packages/fungible_pausable_example`
 
 </details>
 
@@ -252,7 +252,7 @@ __constructor(admin, manager, initial_supply, cap, name, symbol, decimals)
 - `total_supply()` - Current supply
 - Standard ERC-20 operations
 
-**Package:** `packages/fungible_capped_example`
+**Generated package:** `packages/fungible_capped_example`
 
 </details>
 
@@ -277,7 +277,7 @@ __constructor(admin, manager, initial_supply, name, symbol, decimals)
 - `allowed(user)` - Check if user is allowed
 - Standard ERC-20 operations with allowlist checks
 
-**Package:** `packages/fungible_allowlist_example`
+**Generated package:** `packages/fungible_allowlist_example`
 
 </details>
 
@@ -302,7 +302,7 @@ __constructor(admin, manager, initial_supply, name, symbol, decimals)
 - `blocked(user)` - Check if user is blocked
 - Standard ERC-20 operations with blocklist checks
 
-**Package:** `packages/fungible_blocklist_example`
+**Generated package:** `packages/fungible_blocklist_example`
 
 </details>
 
@@ -326,7 +326,7 @@ __constructor(asset, decimals_offset)
 - `withdraw(shares, receiver)` - Withdraw assets
 - `total_assets()` - Total managed assets
 
-**Package:** `packages/fungible_vault_example`
+**Generated package:** `packages/fungible_vault_example`
 
 </details>
 
@@ -356,7 +356,7 @@ __constructor(owner)
 - `get_owner_token_id(owner, index)` - Get token ID by owner index
 - Standard ERC-721 operations
 
-**Package:** `packages/nft_enumerable_example`
+**Generated package:** `packages/nft_enumerable_example`
 
 </details>
 
@@ -381,7 +381,7 @@ __constructor(admin)
 - `has_role(user, role)` - Check if user has role
 - Standard ERC-721 operations
 
-**Package:** `packages/nft_access_control_example`
+**Generated package:** `packages/nft_access_control_example`
 
 </details>
 
@@ -408,7 +408,7 @@ __constructor(admin, manager)
 - `set_default_royalty(receiver, basis_points)` - Update default
 - Standard ERC-721 operations
 
-**Package:** `packages/nft_royalties_example`
+**Generated package:** `packages/nft_royalties_example`
 
 **Note:** Contract exists but not currently exposed in frontend
 
@@ -439,7 +439,7 @@ __constructor(root_hash)
 - `has_voted(index)` - Check if voter has voted
 - `get_vote_results()` - Get current vote tallies
 
-**Package:** `packages/merkle_voting`
+**Generated package:** `packages/merkle_voting`
 
 </details>
 
@@ -649,10 +649,22 @@ stellar contract deploy \
 
 ### Generated Packages
 
-All contracts have auto-generated TypeScript clients in `packages/`:
+The TypeScript clients under `packages/` are generated at build time and are **not checked
+into the repository**: `.gitignore` excludes `packages/*` except `packages/.gitkeep`, so a
+fresh clone has an empty `packages/` directory. Generate the clients before importing them:
+
+```bash
+# Generate the client sources for every contract
+stellar scaffold build --build-clients
+
+# Compile the generated packages
+npm run install:contracts
+```
+
+The example below assumes that step has already run:
 
 ```typescript
-// Import generated client
+// Import generated client (only exists after the build step above)
 import { Contract as TokenFactory } from './packages/token_factory';
 
 // Initialize client
@@ -711,12 +723,8 @@ stellar-studio-contracts/
 │   ├── nft-*/                  # 3 NFT implementations
 │   └── merkle-voting/          # Governance implementation
 │
-├── packages/                   # Generated TypeScript clients
-│   ├── master_factory/
-│   ├── token_factory/
-│   ├── nft_factory/
-│   ├── governance_factory/
-│   └── .../                    # Contract packages
+├── packages/                   # Generated TypeScript clients (gitignored)
+│   └── .gitkeep                # Only this file is committed
 │
 ├── target/                     # Build output
 │   └── wasm32v1-none/release/  # Compiled WASM files
