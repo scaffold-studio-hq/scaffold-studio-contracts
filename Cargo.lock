@@ -610,7 +610,6 @@ name = "fungible-vault-example"
 version = "0.0.1"
 dependencies = [
  "soroban-sdk",
- "stellar-access",
  "stellar-macros",
  "stellar-tokens",
 ]
