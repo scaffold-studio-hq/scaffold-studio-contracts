@@ -4,10 +4,24 @@
 //! setting and querying royalty information for NFTs following the ERC2981
 //! standard.
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, symbol_short, Address, Env, String,
+};
 use stellar_access::access_control::{self as access_control, AccessControl};
 use stellar_macros::{default_impl, only_admin, only_role};
 use stellar_tokens::non_fungible::{royalties::NonFungibleRoyalties, Base, NonFungibleToken};
+
+/// Maximum royalty expressed in basis points (100% == 10_000 basis points).
+pub const MAX_BASIS_POINTS: u32 = 10_000;
+
+/// Errors raised by this example contract.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ExampleContractError {
+    /// A royalty above 100% (`10_000` basis points) was supplied.
+    InvalidRoyaltyAmount = 1,
+}
 
 #[contract]
 pub struct ExampleContract;
@@ -34,6 +48,8 @@ impl ExampleContract {
 
     #[only_admin]
     pub fn mint_with_royalty(e: &Env, to: Address, receiver: Address, basis_points: u32) -> u32 {
+        Self::require_valid_basis_points(e, basis_points);
+
         // Mint token with sequential ID
         let token_id = Base::sequential_mint(e, &to);
 
@@ -45,6 +61,14 @@ impl ExampleContract {
 
     pub fn get_royalty_info(e: &Env, token_id: u32, sale_price: i128) -> (Address, i128) {
         Base::royalty_info(e, token_id, sale_price)
+    }
+
+    // Helper: reject any royalty above 100% before it reaches the underlying
+    // `Base` implementation.
+    fn require_valid_basis_points(e: &Env, basis_points: u32) {
+        if basis_points > MAX_BASIS_POINTS {
+            panic_with_error!(e, ExampleContractError::InvalidRoyaltyAmount);
+        }
     }
 }
 
@@ -58,6 +82,7 @@ impl NonFungibleToken for ExampleContract {
 impl NonFungibleRoyalties for ExampleContract {
     #[only_role(operator, "manager")]
     fn set_default_royalty(e: &Env, receiver: Address, basis_points: u32, operator: Address) {
+        Self::require_valid_basis_points(e, basis_points);
         Base::set_default_royalty(e, &receiver, basis_points);
     }
 
@@ -69,6 +94,7 @@ impl NonFungibleRoyalties for ExampleContract {
         basis_points: u32,
         operator: Address,
     ) {
+        Self::require_valid_basis_points(e, basis_points);
         Base::set_token_royalty(e, token_id, &receiver, basis_points);
     }
 
