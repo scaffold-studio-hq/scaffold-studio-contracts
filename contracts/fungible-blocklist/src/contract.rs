@@ -5,7 +5,7 @@
 //! controlled token transfers by an admin who can block or unblock specific
 //! accounts.
 
-use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String};
 use stellar_access::access_control::{self as access_control, AccessControl};
 use stellar_macros::{default_impl, only_role};
 use stellar_tokens::fungible::{
@@ -15,13 +15,6 @@ use stellar_tokens::fungible::{
 
 #[contract]
 pub struct ExampleContract;
-
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum ExampleContractError {
-    Unauthorized = 1,
-}
 
 #[contractimpl]
 impl ExampleContract {
