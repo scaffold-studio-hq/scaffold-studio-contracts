@@ -1,6 +1,6 @@
 //! Tokenized Vault Example Contract.
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, Address, Env, String};
 use stellar_macros::default_impl;
 use stellar_tokens::{
     fungible::{Base, FungibleToken},
@@ -10,9 +10,28 @@ use stellar_tokens::{
 #[contract]
 pub struct ExampleContract;
 
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ExampleContractError {
+    InvalidDecimalsOffset = 1,
+    InvalidAsset = 2,
+}
+
+/// Maximum accepted `decimals_offset`. The vault reports
+/// `asset_decimals + decimals_offset`; offsets above this bound produce
+/// share decimals far beyond the Stellar token convention and are rejected.
+const MAX_DECIMALS_OFFSET: u32 = 18;
+
 #[contractimpl]
 impl ExampleContract {
     pub fn __constructor(e: &Env, asset: Address, decimals_offset: u32) {
+        if decimals_offset > MAX_DECIMALS_OFFSET {
+            panic_with_error!(e, ExampleContractError::InvalidDecimalsOffset);
+        }
+        if asset == e.current_contract_address() {
+            panic_with_error!(e, ExampleContractError::InvalidAsset);
+        }
         // Asset and decimal offset should be configured once during initialization.
         Vault::set_asset(e, asset);
         Vault::set_decimals_offset(e, decimals_offset);

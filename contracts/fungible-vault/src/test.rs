@@ -396,3 +396,39 @@ fn test_redeem_exceeds_max() {
     // Try to redeem more shares than user has
     vault_client.redeem(&(shares + 1), &user, &user, &user);
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_vault_rejects_excessive_decimals_offset() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let asset_client = create_asset_client(&e, 1_000_000_000_000_000_000i128, &admin);
+
+    // 19 > MAX_DECIMALS_OFFSET -> constructor panics with a defined error.
+    let _vault = create_vault_client(&e, &asset_client.address, 19);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_vault_rejects_extreme_decimals_offset() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let asset_client = create_asset_client(&e, 1_000_000_000_000_000_000i128, &admin);
+
+    let _vault = create_vault_client(&e, &asset_client.address, u32::MAX);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn test_vault_rejects_self_as_asset() {
+    let e = Env::default();
+    let vault_address = Address::generate(&e);
+
+    // Registering the vault at an address while naming that same address as
+    // the underlying asset is rejected at construction.
+    let _ = e.register_at(
+        &vault_address,
+        ExampleContract,
+        (vault_address.clone(), 0u32),
+    );
+}
