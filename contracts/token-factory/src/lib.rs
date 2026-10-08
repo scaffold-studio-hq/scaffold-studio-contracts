@@ -30,6 +30,7 @@ pub enum DataKey {
     DeployedTokens,
     TokenCount,
     Paused,                      // Emergency pause
+    UsedSalts(BytesN<32>),       // Persistent reservation for deterministic deployments
 }
 
 #[contracttype]
@@ -137,6 +138,7 @@ pub enum TokenFactoryError {
     NoPendingAdmin = 16,
     NotPendingAdmin = 17,
     ContractPaused = 18,
+    DuplicateSalt = 19,
 }
 
 #[contractimpl]
@@ -262,6 +264,12 @@ impl TokenFactory {
             panic_with_error!(&e, TokenFactoryError::ContractPaused);
         }
 
+        // Reusing a deterministic salt would target an existing deployment.
+        let salt_key = DataKey::UsedSalts(config.salt.clone());
+        if e.storage().persistent().has(&salt_key) {
+            panic_with_error!(&e, TokenFactoryError::DuplicateSalt);
+        }
+
         // Get WASM hash based on token type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.token_type);
 
@@ -325,6 +333,9 @@ impl TokenFactory {
                     .deploy_v2(wasm_hash, constructor_args)
             }
         };
+
+        // Reserve this salt only after the deployment succeeds. Failed calls roll back.
+        e.storage().persistent().set(&salt_key, &true);
 
         // Update state AFTER successful deployment
         // Increment token count with overflow protection
