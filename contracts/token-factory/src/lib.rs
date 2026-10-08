@@ -703,7 +703,40 @@ impl TokenFactory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, Events}, Env, String};
+    use soroban_sdk::{testutils::{Address as _, Events}, Env, IntoVal, Map, String, Symbol, TryFromVal, Val};
+    // The Allowlist token WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod fungible_allowlist_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/fungible_allowlist_example.wasm");
+    }
+
+    /// Returns the `token_type` carried by the `TokenDeployedEvent` that was
+    /// published for `token_address`, or `None` when no such event was emitted.
+    fn token_deployed_event_type(env: &Env, token_address: &Address) -> Option<TokenType> {
+        let event_topic: Val = Symbol::new(env, "token_deployed_event").into_val(env);
+        let address_key = Symbol::new(env, "token_address");
+        let token_type_key = Symbol::new(env, "token_type");
+
+        for (_, topics, data) in env.events().all().iter() {
+            if topics.get(0) != Some(event_topic.clone()) {
+                continue;
+            }
+            let Ok(event_data) = Map::<Symbol, Val>::try_from_val(env, &data) else {
+                continue;
+            };
+            let Some(address_val) = event_data.get(address_key.clone()) else {
+                continue;
+            };
+            if Address::try_from_val(env, &address_val).ok().as_ref() != Some(token_address) {
+                continue;
+            }
+            if let Some(type_val) = event_data.get(token_type_key.clone()) {
+                return TokenType::try_from_val(env, &type_val).ok();
+            }
+        }
+        None
+    }
+
 
     fn setup_factory(env: &Env) -> (TokenFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -726,6 +759,46 @@ mod test {
 
         (client, admin, wasm_hash)
     }
+
+    // ===== Allowlist Success-Path Test =====
+
+    #[test]
+    fn test_deploy_allowlist_token_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_factory(&env);
+        let allowlist_hash = env.deployer().upload_contract_wasm(fungible_allowlist_wasm::WASM);
+        client.set_allowlist_wasm(&admin, &allowlist_hash);
+
+        let manager = Address::generate(&env);
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager,
+            initial_supply: 1_000_000,
+            cap: None,
+            name: String::from_str(&env, "Test Token"),
+            symbol: String::from_str(&env, "TEST"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[51u8; 32]),
+            asset: None,
+            decimals_offset: None,
+        };
+
+        let token_address = client.deploy_token(&admin, &config);
+
+        assert_eq!(client.get_token_count(), 1);
+        let tokens = client.get_deployed_tokens();
+        let info = tokens.get(0).unwrap();
+        assert_eq!(info.address, token_address);
+        assert_eq!(info.token_type, TokenType::Allowlist);
+        assert_eq!(
+            token_deployed_event_type(&env, &token_address),
+            Some(TokenType::Allowlist)
+        );
+    }
+
 
     // ===== Constructor Tests =====
 
@@ -1306,7 +1379,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #21)")] // ContractPaused
+    #[should_panic(expected = "Error(Contract, #18)")] // ContractPaused
     fn test_security_pause_prevents_deployment() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1408,7 +1481,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #20)")] // NotPendingAdmin
+    #[should_panic(expected = "Error(Contract, #17)")] // NotPendingAdmin
     fn test_twostep_admin_transfer_wrong_acceptor() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1425,7 +1498,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #19)")] // NoPendingAdmin
+    #[should_panic(expected = "Error(Contract, #16)")] // NoPendingAdmin
     fn test_twostep_admin_transfer_accept_without_initiate() {
         let env = Env::default();
         env.mock_all_auths();
