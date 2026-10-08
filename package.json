@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"stellar scaffold watch --build-clients\" \"vite\"",
-    "start": "concurrently \"stellar scaffold watch --build-clients\" \"vite\"",
+    "start": "npm run dev",
     "build": "tsc -b && vite build",
     "install:contracts": "npm install --workspace=packages && npm run build --workspace=packages",
     "preview": "vite preview",
