@@ -26,6 +26,8 @@ pub enum DataKey {
     DeployedNFTs,
     NFTCount,
     Paused,                    // Emergency pause
+    // Append-only variant for compatibility with existing deployed keys.
+    DeployedNFT(u32),
 }
 
 #[contracttype]
@@ -129,9 +131,7 @@ impl NFTFactory {
     pub fn __constructor(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
-        // Initialize empty NFTs list
-        let nfts: Vec<NFTInfo> = Vec::new(&e);
-        e.storage().instance().set(&DataKey::DeployedNFTs, &nfts);
+        // Keep the original vector key reserved for read-only upgrade fallback.
         e.storage().instance().set(&DataKey::NFTCount, &0u32);
 
         // Initialize paused flag
@@ -289,20 +289,11 @@ impl NFTFactory {
             base_uri: config.base_uri.clone(),
         };
 
-        let mut nfts: Vec<NFTInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or_else(|| Vec::new(&e));
-        nfts.push_back(nft_info);
-        e.storage().instance().set(&DataKey::DeployedNFTs, &nfts);
-
-        // Increment NFT count with overflow protection
+        // Count is the next stable index. Never rewrite the growing legacy Vec.
         let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
         let new_count = count.checked_add(1)
-            .unwrap_or_else(|| {
-                panic_with_error!(&e, NFTFactoryError::CounterOverflow)
-            });
+            .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedNFT(count), &nft_info);
         e.storage().instance().set(&DataKey::NFTCount, &new_count);
 
         // Emit event
@@ -322,10 +313,29 @@ impl NFTFactory {
     /// # Returns
     /// Vector of NFTInfo containing all deployed NFTs
     pub fn get_deployed_nfts(e: Env) -> Vec<NFTInfo> {
-        e.storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or(Vec::new(&e))
+        let count = Self::get_nft_count(e.clone());
+        Self::deployed_nfts_range(&e, 0, count)
+    }
+
+    /// Bound a deployment-record read to at most 100 indexed keys.
+    pub fn get_deployed_nfts_page(e: Env, start: u32, limit: u32) -> Vec<NFTInfo> {
+        let count = Self::get_nft_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_nfts_range(&e, start, end)
+    }
+
+    fn deployed_nfts_range(e: &Env, start: u32, end: u32) -> Vec<NFTInfo> {
+        let mut result = Vec::new(e);
+        let legacy: Vec<NFTInfo> = e.storage().instance()
+            .get(&DataKey::DeployedNFTs).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<NFTInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedNFT(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get NFTs by type
@@ -336,11 +346,7 @@ impl NFTFactory {
     /// # Returns
     /// Vector of NFTInfo for the specified type
     pub fn get_nfts_by_type(e: Env, nft_type: NFTType) -> Vec<NFTInfo> {
-        let all_nfts: Vec<NFTInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or(Vec::new(&e));
+        let all_nfts = Self::get_deployed_nfts(e.clone());
 
         let mut filtered = Vec::new(&e);
         for nft in all_nfts.iter() {
@@ -359,11 +365,7 @@ impl NFTFactory {
     /// # Returns
     /// Vector of NFTInfo for NFTs owned by the address
     pub fn get_nfts_by_owner(e: Env, owner: Address) -> Vec<NFTInfo> {
-        let all_nfts: Vec<NFTInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or(Vec::new(&e));
+        let all_nfts = Self::get_deployed_nfts(e.clone());
 
         let mut filtered = Vec::new(&e);
         for nft in all_nfts.iter() {
