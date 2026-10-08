@@ -587,8 +587,8 @@ All factory contracts include comprehensive test suites covering:
 RPC: http://localhost:8000/rpc
 Passphrase: Standalone Network ; February 2017
 
-# Start network
-stellar network start standalone
+# Start network (the network passphrase remains "Standalone Network ; February 2017")
+stellar network start local
 
 # Deploy
 ./setup-local.sh

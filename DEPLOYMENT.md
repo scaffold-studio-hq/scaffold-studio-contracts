@@ -192,7 +192,7 @@ target/stellar/local/
 
 - All factories are initialized with `admin = me`
 - Local network must be running for contract invocations
-- Use `stellar network start standalone` if network is down
+- Use `stellar network start local` if network is down
 - Use `stellar container logs local` to view Docker logs
 - TypeScript clients are available in `packages/` directories
 
