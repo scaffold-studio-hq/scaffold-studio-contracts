@@ -29,6 +29,7 @@ pub enum DataKey {
     VaultWasm,
     DeployedTokens,
     TokenCount,
+    UsedSalts(BytesN<32>),       // Salts consumed by successful deployments
     Paused,                      // Emergency pause
 }
 
@@ -137,6 +138,9 @@ pub enum TokenFactoryError {
     NoPendingAdmin = 16,
     NotPendingAdmin = 17,
     ContractPaused = 18,
+    /// The supplied deployment salt has already been used for a previous
+    /// successful deployment.
+    DuplicateSalt = 19,
 }
 
 #[contractimpl]
@@ -262,6 +266,13 @@ impl TokenFactory {
             panic_with_error!(&e, TokenFactoryError::ContractPaused);
         }
 
+        // Reject a salt that has already produced a token: deterministic
+        // addressing means reusing it would target an existing contract address
+        let salt_key = DataKey::UsedSalts(config.salt.clone());
+        if e.storage().persistent().has(&salt_key) {
+            panic_with_error!(&e, TokenFactoryError::DuplicateSalt);
+        }
+
         // Get WASM hash based on token type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.token_type);
 
@@ -325,6 +336,9 @@ impl TokenFactory {
                     .deploy_v2(wasm_hash, constructor_args)
             }
         };
+
+        // Mark the salt as consumed now that the deployment succeeded
+        e.storage().persistent().set(&salt_key, &true);
 
         // Update state AFTER successful deployment
         // Increment token count with overflow protection
@@ -1207,7 +1221,7 @@ mod test {
 
     #[test]
     #[ignore = "Requires real WASM deployment - move to integration tests"]
-    #[should_panic(expected = "Error(Contract, #14)")] // DuplicateSalt
+    #[should_panic(expected = "Error(Contract, #19)")] // DuplicateSalt
     fn test_security_salt_duplication_prevention() {
         let env = Env::default();
         env.mock_all_auths();
