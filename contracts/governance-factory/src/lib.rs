@@ -24,6 +24,8 @@ pub enum DataKey {
     DeployedGovernance,
     GovernanceCount,
     Paused,                    // Emergency pause
+    // Appended without shifting existing on-ledger variant discriminants.
+    DeployedGovernanceEntry(u32),
 }
 
 #[contracttype]
@@ -122,11 +124,8 @@ impl GovernanceFactory {
     pub fn __constructor(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
-        // Initialize empty governance list
-        let governance: Vec<GovernanceInfo> = Vec::new(&e);
-        e.storage()
-            .instance()
-            .set(&DataKey::DeployedGovernance, &governance);
+        // The legacy deployed Vec is read-only on upgrade; fresh records use
+        // individually addressed persistent entries.
         e.storage().instance().set(&DataKey::GovernanceCount, &0u32);
 
         // Initialize paused flag
@@ -232,29 +231,13 @@ impl GovernanceFactory {
             name: None,
         };
 
-        let mut governance: Vec<GovernanceInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedGovernance)
-            .unwrap_or_else(|| Vec::new(&e));
-        governance.push_back(governance_info);
-        e.storage()
-            .instance()
-            .set(&DataKey::DeployedGovernance, &governance);
-
-        // Increment governance count with overflow protection
-        let count: u32 = e
-            .storage()
-            .instance()
-            .get(&DataKey::GovernanceCount)
-            .unwrap_or(0);
+        // Count is the new stable index and remains a small instance entry.
+        let count: u32 = e.storage().instance()
+            .get(&DataKey::GovernanceCount).unwrap_or(0);
         let new_count = count.checked_add(1)
-            .unwrap_or_else(|| {
-                panic_with_error!(&e, GovernanceFactoryError::CounterOverflow)
-            });
-        e.storage()
-            .instance()
-            .set(&DataKey::GovernanceCount, &new_count);
+            .unwrap_or_else(|| panic_with_error!(&e, GovernanceFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedGovernanceEntry(count), &governance_info);
+        e.storage().instance().set(&DataKey::GovernanceCount, &new_count);
 
         // Emit event
         GovernanceDeployedEvent {
@@ -273,10 +256,29 @@ impl GovernanceFactory {
     /// # Returns
     /// Vector of GovernanceInfo containing all deployed governance contracts
     pub fn get_deployed_governance(e: Env) -> Vec<GovernanceInfo> {
-        e.storage()
-            .instance()
-            .get(&DataKey::DeployedGovernance)
-            .unwrap_or(Vec::new(&e))
+        let count = Self::get_governance_count(e.clone());
+        Self::deployed_governance_range(&e, 0, count)
+    }
+
+    /// Read a predictable page of at most 100 deployment records.
+    pub fn get_deployed_governance_page(e: Env, start: u32, limit: u32) -> Vec<GovernanceInfo> {
+        let count = Self::get_governance_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_governance_range(&e, start, end)
+    }
+
+    fn deployed_governance_range(e: &Env, start: u32, end: u32) -> Vec<GovernanceInfo> {
+        let mut result = Vec::new(e);
+        let legacy: Vec<GovernanceInfo> = e.storage().instance()
+            .get(&DataKey::DeployedGovernance).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<GovernanceInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedGovernanceEntry(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get governance contracts by type
@@ -287,11 +289,7 @@ impl GovernanceFactory {
     /// # Returns
     /// Vector of GovernanceInfo for the specified type
     pub fn get_governance_by_type(e: Env, governance_type: GovernanceType) -> Vec<GovernanceInfo> {
-        let all_governance: Vec<GovernanceInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedGovernance)
-            .unwrap_or(Vec::new(&e));
+        let all_governance = Self::get_deployed_governance(e.clone());
 
         let mut filtered = Vec::new(&e);
         for gov in all_governance.iter() {
@@ -310,11 +308,7 @@ impl GovernanceFactory {
     /// # Returns
     /// Vector of GovernanceInfo for contracts managed by the admin
     pub fn get_governance_by_admin(e: Env, admin: Address) -> Vec<GovernanceInfo> {
-        let all_governance: Vec<GovernanceInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedGovernance)
-            .unwrap_or(Vec::new(&e));
+        let all_governance = Self::get_deployed_governance(e.clone());
 
         let mut filtered = Vec::new(&e);
         for gov in all_governance.iter() {
