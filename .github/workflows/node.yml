@@ -34,14 +34,11 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libudev-dev libdbus-1-dev pkg-config
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@v1.15.6
-      - name: Check for stellar-scaffold binary
+      - name: Install pinned stellar-scaffold CLI (0.0.26)
         run: |
-          if ! command -v stellar-scaffold &> /dev/null; then
-            echo "stellar-scaffold not found, installing..."
-            cargo binstall stellar-scaffold-cli
-          else
-            echo "stellar-scaffold already installed. Clear cache to force reinstall."
-          fi
+          # Keep client generation reproducible even if the Cargo binary cache
+          # contains a previous CLI version. This release supports Rust 1.89.
+          cargo binstall --no-confirm --locked --force stellar-scaffold-cli@0.0.26
       - uses: actions/setup-node@v4
         with:
           node-version: 22
