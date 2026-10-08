@@ -1174,6 +1174,36 @@ mod test {
 
     // ===== Query Tests =====
 
+    // Focused upgrade-path regression: a historic Vec and a newly indexed
+    // record must be visible in order without appending to the historic Vec.
+    #[test]
+    fn test_indexed_deployment_page_and_legacy_fallback() {
+        let env = Env::default();
+        let (client, admin) = setup_factory(&env);
+        let historic = TokenInfo {
+            address: Address::generate(&env), token_type: TokenType::Allowlist,
+            admin: admin.clone(), timestamp: 1, name: None,
+        };
+        let indexed = TokenInfo {
+            address: Address::generate(&env), token_type: TokenType::Capped,
+            admin, timestamp: 2, name: None,
+        };
+        env.as_contract(&client.address, || {
+            let mut records = Vec::new(&env);
+            records.push_back(historic.clone());
+            env.storage().instance().set(&DataKey::DeployedTokens, &records);
+            env.storage().instance().set(&DataKey::TokenCount, &2u32);
+            env.storage().persistent().set(&DataKey::DeployedToken(1), &indexed);
+        });
+        let full = client.get_deployed_tokens();
+        assert_eq!(full.len(), 2);
+        assert_eq!(full.get(0), Some(historic.clone()));
+        assert_eq!(full.get(1), Some(indexed.clone()));
+        assert_eq!(client.get_deployed_tokens_page(&0, &1).get(0), Some(historic));
+        assert_eq!(client.get_deployed_tokens_page(&1, &999).get(0), Some(indexed));
+        assert_eq!(client.get_deployed_tokens_page(&2, &10).len(), 0);
+    }
+
     #[test]
     fn test_get_deployed_tokens_empty() {
         let env = Env::default();
