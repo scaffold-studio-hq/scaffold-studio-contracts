@@ -11,6 +11,23 @@ env:
   PUBLIC_STELLAR_NETWORK: local
 
 jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            runner/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run Rust contract tests
+        run: cargo test --workspace --locked
+
   build:
     runs-on: ubuntu-latest
     steps:
