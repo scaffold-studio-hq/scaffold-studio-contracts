@@ -47,6 +47,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install cargo-audit
+        run: cargo binstall --no-confirm cargo-audit
+      - name: Audit Rust dependencies (RustSec advisories)
+        # Allow-list an unavoidable advisory by appending `--ignore RUSTSEC-YYYY-NNNN` to the
+        # command below, with a comment here naming the crate, the reason, and the date the
+        # exception should be revisited. Do not remove the step to silence a failure.
+        run: cargo audit
+      - name: Audit npm production dependencies
+        # Gates on high and critical advisories in production dependencies. Record any
+        # temporary exception here with a dated comment rather than lowering the audit level.
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npx prettier . --check
       - name: Build clients before building the project
