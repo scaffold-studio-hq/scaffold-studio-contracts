@@ -738,6 +738,38 @@ mod test {
         (client, admin, wasm_hash)
     }
 
+    #[test]
+    #[should_panic(expected = "Error(Contract, #19)")]
+    fn test_rejects_a_previously_used_deployment_salt() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin) = setup_factory(&env);
+        let salt = BytesN::from_array(&env, &[7u8; 32]);
+
+        // Mirror a previously successful deployment without needing WASM fixtures.
+        env.as_contract(&client.address, || {
+            env.storage()
+                .persistent()
+                .set(&DataKey::UsedSalts(salt.clone()), &true);
+        });
+
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager: admin.clone(),
+            initial_supply: 100,
+            cap: None,
+            name: String::from_str(&env, "Example"),
+            symbol: String::from_str(&env, "EX"),
+            decimals: 7,
+            salt,
+            asset: None,
+            decimals_offset: None,
+        };
+
+        client.deploy_token(&admin, &config);
+    }
+
     // ===== Constructor Tests =====
 
     #[test]
