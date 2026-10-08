@@ -571,7 +571,52 @@ impl NFTFactory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        Env, IntoVal, Map, String, Symbol, TryFromVal, Val,
+    };
+
+    // The three NFT example WASMs are produced by `stellar contract build`
+    // into the workspace `target/wasm32v1-none/release/` directory.
+    mod nft_enumerable_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/nft_enumerable_example.wasm");
+    }
+
+    mod nft_royalties_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/nft_royalties_example.wasm");
+    }
+
+    mod nft_access_control_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/nft_access_control_example.wasm");
+    }
+
+    /// Returns the `nft_type` carried by the `NFTDeployedEvent` that was
+    /// published for `nft_address`, or `None` when no such event was emitted.
+    fn nft_deployed_event_type(env: &Env, nft_address: &Address) -> Option<NFTType> {
+        let event_topic: Val = Symbol::new(env, "nft_deployed_event").into_val(env);
+        let address_key = Symbol::new(env, "nft_address");
+        let nft_type_key = Symbol::new(env, "nft_type");
+
+        for (_, topics, data) in env.events().all().iter() {
+            if topics.get(0) != Some(event_topic.clone()) {
+                continue;
+            }
+            let Ok(event_data) = Map::<Symbol, Val>::try_from_val(env, &data) else {
+                continue;
+            };
+            let Some(address_val) = event_data.get(address_key.clone()) else {
+                continue;
+            };
+            if Address::try_from_val(env, &address_val).ok().as_ref() != Some(nft_address) {
+                continue;
+            }
+            if let Some(type_val) = event_data.get(nft_type_key.clone()) {
+                return NFTType::try_from_val(env, &type_val).ok();
+            }
+        }
+        None
+    }
+
 
     fn setup_nft_factory(env: &Env) -> (NFTFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -591,6 +636,112 @@ mod test {
 
         (client, admin, wasm_hash)
     }
+
+    // ===== Success-Path Deployment Tests =====
+
+    #[test]
+    fn test_deploy_enumerable_nft_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_nft_factory(&env);
+        let wasm_hash = env.deployer().upload_contract_wasm(nft_enumerable_wasm::WASM);
+        client.set_enumerable_wasm(&admin, &wasm_hash);
+
+        let owner = Address::generate(&env);
+        let config = NFTConfig {
+            nft_type: NFTType::Enumerable,
+            owner: owner.clone(),
+            admin: None,
+            manager: None,
+            salt: BytesN::from_array(&env, &[81u8; 32]),
+            name: Some(String::from_str(&env, "Enumerable Collection")),
+            symbol: Some(String::from_str(&env, "ENUM")),
+            base_uri: Some(String::from_str(&env, "https://example.com/nft/")),
+        };
+
+        let nft_address = client.deploy_nft(&admin, &config);
+
+        assert_eq!(client.get_nft_count(), 1);
+        let nfts = client.get_deployed_nfts();
+        assert_eq!(nfts.get(0).unwrap().address, nft_address);
+        assert_eq!(nfts.get(0).unwrap().nft_type, NFTType::Enumerable);
+        assert_eq!(nfts.get(0).unwrap().owner, owner);
+        assert_eq!(
+            nft_deployed_event_type(&env, &nft_address),
+            Some(NFTType::Enumerable)
+        );
+    }
+
+    #[test]
+    fn test_deploy_royalties_nft_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_nft_factory(&env);
+        let wasm_hash = env.deployer().upload_contract_wasm(nft_royalties_wasm::WASM);
+        client.set_royalties_wasm(&admin, &wasm_hash);
+
+        let owner = Address::generate(&env);
+        let nft_admin = Address::generate(&env);
+        let nft_manager = Address::generate(&env);
+        let config = NFTConfig {
+            nft_type: NFTType::Royalties,
+            owner: owner.clone(),
+            admin: Some(nft_admin),
+            manager: Some(nft_manager),
+            salt: BytesN::from_array(&env, &[82u8; 32]),
+            name: Some(String::from_str(&env, "Royalties Collection")),
+            symbol: Some(String::from_str(&env, "ROY")),
+            base_uri: Some(String::from_str(&env, "https://example.com/nft/")),
+        };
+
+        let nft_address = client.deploy_nft(&admin, &config);
+
+        assert_eq!(client.get_nft_count(), 1);
+        let nfts = client.get_deployed_nfts();
+        assert_eq!(nfts.get(0).unwrap().address, nft_address);
+        assert_eq!(nfts.get(0).unwrap().nft_type, NFTType::Royalties);
+        assert_eq!(
+            nft_deployed_event_type(&env, &nft_address),
+            Some(NFTType::Royalties)
+        );
+    }
+
+    #[test]
+    fn test_deploy_access_control_nft_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_nft_factory(&env);
+        let wasm_hash = env.deployer().upload_contract_wasm(nft_access_control_wasm::WASM);
+        client.set_access_control_wasm(&admin, &wasm_hash);
+
+        let owner = Address::generate(&env);
+        let nft_admin = Address::generate(&env);
+        let config = NFTConfig {
+            nft_type: NFTType::AccessControl,
+            owner: owner.clone(),
+            admin: Some(nft_admin),
+            manager: None,
+            salt: BytesN::from_array(&env, &[83u8; 32]),
+            name: Some(String::from_str(&env, "Access Control Collection")),
+            symbol: Some(String::from_str(&env, "ACL")),
+            base_uri: Some(String::from_str(&env, "https://example.com/nft/")),
+        };
+
+        let nft_address = client.deploy_nft(&admin, &config);
+
+        assert_eq!(client.get_nft_count(), 1);
+        let nfts = client.get_deployed_nfts();
+        assert_eq!(nfts.get(0).unwrap().address, nft_address);
+        assert_eq!(nfts.get(0).unwrap().nft_type, NFTType::AccessControl);
+        assert_eq!(
+            nft_deployed_event_type(&env, &nft_address),
+            Some(NFTType::AccessControl)
+        );
+    }
+
 
     // ===== Constructor Tests =====
 
@@ -689,6 +840,9 @@ mod test {
             admin: None, // Missing
             manager: Some(manager),
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
@@ -711,6 +865,9 @@ mod test {
             admin: Some(admin),
             manager: None, // Missing
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
@@ -732,6 +889,9 @@ mod test {
             admin: None, // Missing
             manager: None,
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
@@ -754,6 +914,9 @@ mod test {
             admin: None,
             manager: None,
             salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
