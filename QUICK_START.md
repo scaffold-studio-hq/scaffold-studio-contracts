@@ -109,14 +109,17 @@ stellar contract invoke \
 ### Deploy Token
 
 ```bash
-# Deploy pausable token
+# Deploy pausable token.
+# `salt` is 32 random bytes encoded as a 64-character hex string.
+SALT=$(openssl rand -hex 32)
+
 stellar contract invoke \
   --id CAHLJEQUCNTV7JPAPCMLCBIHOX7FFB57DUARJ6XGTW27FPCVKKY7JM2A \
   --source me \
   --network testnet \
   -- deploy_token \
   --deployer $(stellar keys address me) \
-  --config '{"token_type":{"tag":"Pausable"},"admin":"'$(stellar keys address me)'","manager":"'$(stellar keys address me)'","name":"Test","symbol":"TST","decimals":7,"initial_supply":"1000000","salt":[...32 random bytes...],"cap":null,"asset":null,"decimals_offset":null}'
+  --config '{"token_type":{"tag":"Pausable"},"admin":"'$(stellar keys address me)'","manager":"'$(stellar keys address me)'","initial_supply":"1000000","cap":null,"name":"Test","symbol":"TST","decimals":7,"salt":"'"$SALT"'","asset":null,"decimals_offset":null}'
 ```
 
 ---
