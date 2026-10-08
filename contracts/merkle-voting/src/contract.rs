@@ -55,6 +55,12 @@ impl MerkleVoting {
     }
 
     pub fn vote(e: &Env, vote_data: VoteData, proof: Vec<BytesN<32>>, approve: bool) {
+        // The Merkle proof only shows that the `(index, account, voting_power)`
+        // tuple is in the tree; it does not show that the caller controls
+        // `vote_data.account`. Require that account's authorization so nobody
+        // can cast another eligible voter's vote before they do.
+        vote_data.account.require_auth();
+
         // Verify merkle proof using the MerkleDistributor
         Distributor::verify_and_set_claimed(e, vote_data.clone(), proof);
 
