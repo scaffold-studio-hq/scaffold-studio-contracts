@@ -55,3 +55,22 @@ jobs:
       - run: npm run build
       - name: Run tests
         run: npm test --if-present
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup target add wasm32v1-none
+      - name: Build workspace WASM artifacts
+        run: cargo build --release --target wasm32v1-none --workspace
+      - name: Run ignored integration tests
+        run: cargo test --test integration_tests -- --ignored --test-threads=1
