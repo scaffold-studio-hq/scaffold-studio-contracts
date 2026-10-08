@@ -5,7 +5,18 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 use crate::contract::{ExampleContract, ExampleContractClient};
 
 fn create_client<'a>(e: &Env, owner: &Address, initial_supply: i128) -> ExampleContractClient<'a> {
-    let address = e.register(ExampleContract, (owner, initial_supply));
+    let manager = Address::generate(e);
+    let address = e.register(
+        ExampleContract,
+        (
+            owner.clone(),
+            manager,
+            initial_supply,
+            String::from_str(e, "My Token"),
+            String::from_str(e, "TKN"),
+            18u32,
+        ),
+    );
     ExampleContractClient::new(e, &address)
 }
 
@@ -124,4 +135,49 @@ fn burn_fails_when_paused() {
     e.mock_all_auths();
     client.pause(&owner);
     client.burn(&owner, &200);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn mint_fails_with_defined_error_when_owner_missing() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    e.as_contract(&client.address, || {
+        e.storage().instance().remove(&crate::contract::OWNER);
+    });
+
+    client.mint(&owner, &500);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn pause_fails_with_defined_error_when_owner_missing() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    e.as_contract(&client.address, || {
+        e.storage().instance().remove(&crate::contract::OWNER);
+    });
+
+    client.pause(&owner);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn unpause_fails_with_defined_error_when_owner_missing() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    e.as_contract(&client.address, || {
+        e.storage().instance().remove(&crate::contract::OWNER);
+    });
+
+    client.unpause(&owner);
 }
