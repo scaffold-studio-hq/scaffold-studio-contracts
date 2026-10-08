@@ -1306,7 +1306,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #21)")] // ContractPaused
+    #[should_panic(expected = "Error(Contract, #18)")] // ContractPaused
     fn test_security_pause_prevents_deployment() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1408,7 +1408,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #20)")] // NotPendingAdmin
+    #[should_panic(expected = "Error(Contract, #17)")] // NotPendingAdmin
     fn test_twostep_admin_transfer_wrong_acceptor() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1425,7 +1425,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #19)")] // NoPendingAdmin
+    #[should_panic(expected = "Error(Contract, #16)")] // NoPendingAdmin
     fn test_twostep_admin_transfer_accept_without_initiate() {
         let env = Env::default();
         env.mock_all_auths();
