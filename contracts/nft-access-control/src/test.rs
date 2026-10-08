@@ -9,7 +9,17 @@ use soroban_sdk::{
 use crate::contract::{ExampleContract, ExampleContractClient};
 
 fn create_client<'a>(e: &Env, admin: &Address) -> ExampleContractClient<'a> {
-    let address = e.register(ExampleContract, (admin,));
+    // Match the four required NFT constructor arguments so role tests exercise
+    // the registered contract rather than failing during setup.
+    let address = e.register(
+        ExampleContract,
+        (
+            admin,
+            String::from_str(e, "https://example.test/nft/"),
+            String::from_str(e, "Access Control NFT"),
+            String::from_str(e, "ACN"),
+        ),
+    );
     ExampleContractClient::new(e, &address)
 }
 
@@ -61,6 +71,24 @@ fn minters_can_mint() {
 
     client.mint(&accounts.minter1, &accounts.minter1, &1);
     client.mint(&accounts.minter2, &accounts.minter2, &2);
+    assert_eq!(client.owner_of(&1), accounts.minter1);
+    assert_eq!(client.owner_of(&2), accounts.minter2);
+}
+
+#[test]
+#[should_panic]
+fn duplicate_token_id_cannot_be_minted_twice() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let client = create_client(&e, &admin);
+
+    e.mock_all_auths();
+
+    let accounts = setup_roles(&e, &client, &admin);
+    client.mint(&accounts.minter1, &accounts.minter1, &7);
+    assert_eq!(client.owner_of(&7), accounts.minter1);
+    // An existing token ID must never be assigned to a second holder.
+    client.mint(&accounts.minter2, &accounts.minter2, &7);
 }
 
 #[test]
@@ -161,7 +189,7 @@ fn minter_admin_can_grant_role() {
 
 #[test]
 #[should_panic(expected = "Error(Contract, #2000)")]
-fn burner_admin_can_revoke_role() {
+fn revoked_burner_cannot_burn_an_existing_token() {
     let e = Env::default();
     let admin = Address::generate(&e);
     let client = create_client(&e, &admin);
@@ -170,10 +198,14 @@ fn burner_admin_can_revoke_role() {
 
     let accounts = setup_roles(&e, &client, &admin);
 
-    // Revoke burner's role
+    // Mint a token first; otherwise failure could simply be "token not found"
+    // instead of proving that role revocation blocked an otherwise valid burn.
+    client.mint(&accounts.minter1, &accounts.burner1, &10);
+    assert_eq!(client.owner_of(&10), accounts.burner1);
+
     client.revoke_role(&accounts.burner_admin, &accounts.burner1, &symbol_short!("burner"));
 
-    // burner1 should now panic if it tries to burn
+    // This attempts to burn a real token, but the signer no longer has the role.
     client.burn(&accounts.burner1, &10);
 }
 
