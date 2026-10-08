@@ -1,11 +1,14 @@
 extern crate std;
 
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 use crate::contract::{ExampleContract, ExampleContractClient};
 
 fn create_client<'a>(e: &Env, owner: &Address) -> ExampleContractClient<'a> {
-    let address = e.register(ExampleContract, (owner,));
+    let base_uri = String::from_str(e, "https://example.com/nft/");
+    let name = String::from_str(e, "Enumerable NFT");
+    let symbol = String::from_str(e, "ENUM");
+    let address = e.register(ExampleContract, (owner, base_uri, name, symbol));
     ExampleContractClient::new(e, &address)
 }
 
