@@ -9,7 +9,15 @@ use soroban_sdk::{
 use crate::contract::{ExampleContract, ExampleContractClient};
 
 fn create_client<'a>(e: &Env, admin: &Address) -> ExampleContractClient<'a> {
-    let address = e.register(ExampleContract, (admin,));
+    let address = e.register(
+        ExampleContract,
+        (
+            admin,
+            String::from_str(e, "https://example.com/nft/"),
+            String::from_str(e, "Access Control NFT"),
+            String::from_str(e, "ACNFT"),
+        ),
+    );
     ExampleContractClient::new(e, &address)
 }
 
@@ -61,6 +69,12 @@ fn minters_can_mint() {
 
     client.mint(&accounts.minter1, &accounts.minter1, &1);
     client.mint(&accounts.minter2, &accounts.minter2, &2);
+
+    // Each minted token is owned by the account it was minted to.
+    assert_eq!(client.owner_of(&1), accounts.minter1);
+    assert_eq!(client.owner_of(&2), accounts.minter2);
+    assert_eq!(client.balance(&accounts.minter1), 1);
+    assert_eq!(client.balance(&accounts.minter2), 1);
 }
 
 #[test]
@@ -170,10 +184,15 @@ fn burner_admin_can_revoke_role() {
 
     let accounts = setup_roles(&e, &client, &admin);
 
-    // Revoke burner's role
+    // Mint a token to burner1 while the burner role is still granted.
+    client.mint(&accounts.minter1, &accounts.burner1, &10);
+    assert_eq!(client.owner_of(&10), accounts.burner1);
+
+    // Revoke burner1's role.
     client.revoke_role(&accounts.burner_admin, &accounts.burner1, &symbol_short!("burner"));
 
-    // burner1 should now panic if it tries to burn
+    // burner1 can no longer burn: the role check rejects it before the burn
+    // path runs (Contract, #2000).
     client.burn(&accounts.burner1, &10);
 }
 
@@ -540,4 +559,28 @@ fn outsiders_cannot_call_multi_role_auth_action() {
 
     // Outsider should not be able to call the function even with auth
     client.multi_role_auth_action(&accounts.outsider);
+}
+
+/// `Base::mint` deliberately does not enforce token-id uniqueness (see the OZ
+/// `NonFungibleToken` extension docs): minting an already-used `token_id`
+/// reassigns ownership and increments the new owner's balance. This pins the
+/// actual behaviour instead of assuming a rejection, so callers that need
+/// uniqueness must guarantee it themselves.
+#[test]
+fn test_minting_existing_token_id_reassigns_owner() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let client = create_client(&e, &admin);
+
+    e.mock_all_auths();
+
+    let accounts = setup_roles(&e, &client, &admin);
+
+    client.mint(&accounts.minter1, &accounts.minter1, &30);
+    assert_eq!(client.owner_of(&30), accounts.minter1);
+
+    // Minting the same token_id again reassigns it to minter2.
+    client.mint(&accounts.minter2, &accounts.minter2, &30);
+    assert_eq!(client.owner_of(&30), accounts.minter2);
+    assert_eq!(client.balance(&accounts.minter2), 1);
 }
