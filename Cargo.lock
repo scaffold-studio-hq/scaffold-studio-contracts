@@ -546,6 +546,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0939f82868b77ef93ce3c3c3daf2b3c526b456741da5a1a4559e590965b6026b"
 
 [[package]]
+name = "factory-common"
+version = "0.0.1"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -643,6 +650,7 @@ dependencies = [
 name = "governance-factory"
 version = "0.0.1"
 dependencies = [
+ "factory-common",
  "soroban-sdk",
 ]
 
@@ -845,6 +853,7 @@ dependencies = [
 name = "master-factory"
 version = "0.0.1"
 dependencies = [
+ "factory-common",
  "soroban-sdk",
 ]
 
@@ -885,6 +894,7 @@ dependencies = [
 name = "nft-factory"
 version = "0.0.1"
 dependencies = [
+ "factory-common",
  "soroban-sdk",
 ]
 
@@ -1601,6 +1611,7 @@ dependencies = [
 name = "token-factory"
 version = "0.0.1"
 dependencies = [
+ "factory-common",
  "soroban-sdk",
 ]
 

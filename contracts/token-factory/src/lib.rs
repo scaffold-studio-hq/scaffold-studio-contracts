@@ -20,8 +20,6 @@ pub struct TokenFactory;
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
-    Admin,
-    PendingAdmin,
     AllowlistWasm,
     BlocklistWasm,
     CappedWasm,
@@ -29,7 +27,6 @@ pub enum DataKey {
     VaultWasm,
     DeployedTokens,
     TokenCount,
-    Paused,                      // Emergency pause
 }
 
 #[contracttype]
@@ -119,7 +116,6 @@ pub struct AdminTransferCancelledEvent {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum TokenFactoryError {
-    NotAdmin = 1,
     WasmNotSet = 2,
     InvalidTokenType = 3,
     InvalidConfig = 4,
@@ -130,13 +126,9 @@ pub enum TokenFactoryError {
     MissingCap = 9,
     CapTooLow = 10,
     UnexpectedCap = 11,
-    AdminNotSet = 12,
     CounterOverflow = 13,
     InvalidCharacters = 14,
     SupplyTooLarge = 15,
-    NoPendingAdmin = 16,
-    NotPendingAdmin = 17,
-    ContractPaused = 18,
 }
 
 #[contractimpl]
@@ -146,13 +138,13 @@ impl TokenFactory {
     /// # Arguments
     /// * `admin` - Address that will have admin privileges
     pub fn __constructor(e: Env, admin: Address) {
-        e.storage().instance().set(&DataKey::Admin, &admin);
+        factory_common::set_admin(&e, &admin);
 
         // Initialize empty tokens list
         let tokens: Vec<TokenInfo> = Vec::new(&e);
         e.storage().instance().set(&DataKey::DeployedTokens, &tokens);
         e.storage().instance().set(&DataKey::TokenCount, &0u32);
-        e.storage().instance().set(&DataKey::Paused, &false);
+        factory_common::set_paused(&e, false);
     }
 
     /// Set WASM hash for Allowlist token type
@@ -162,7 +154,7 @@ impl TokenFactory {
     /// * `wasm_hash` - WASM hash of the Allowlist token contract
     pub fn set_allowlist_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage().instance().set(&DataKey::AllowlistWasm, &wasm_hash);
 
         // Emit event
@@ -180,7 +172,7 @@ impl TokenFactory {
     /// * `wasm_hash` - WASM hash of the Blocklist token contract
     pub fn set_blocklist_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage().instance().set(&DataKey::BlocklistWasm, &wasm_hash);
 
         // Emit event
@@ -198,7 +190,7 @@ impl TokenFactory {
     /// * `wasm_hash` - WASM hash of the Capped token contract
     pub fn set_capped_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage().instance().set(&DataKey::CappedWasm, &wasm_hash);
 
         // Emit event
@@ -216,7 +208,7 @@ impl TokenFactory {
     /// * `wasm_hash` - WASM hash of the Pausable token contract
     pub fn set_pausable_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage().instance().set(&DataKey::PausableWasm, &wasm_hash);
 
         // Emit event
@@ -234,7 +226,7 @@ impl TokenFactory {
     /// * `wasm_hash` - WASM hash of the Vault token contract
     pub fn set_vault_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage().instance().set(&DataKey::VaultWasm, &wasm_hash);
 
         // Emit event
@@ -256,11 +248,8 @@ impl TokenFactory {
     pub fn deploy_token(e: Env, deployer: Address, config: TokenConfig) -> Address {
         deployer.require_auth();
 
-        // Check if contract is paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
-        if paused {
-            panic_with_error!(&e, TokenFactoryError::ContractPaused);
-        }
+        // Reject deployments while the contract is paused
+        factory_common::require_not_paused(&e);
 
         // Get WASM hash based on token type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.token_type);
@@ -437,70 +426,17 @@ impl TokenFactory {
         e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0)
     }
 
-    /// Get admin address
-    ///
-    /// # Returns
-    /// Address of the admin
-    pub fn get_admin(e: Env) -> Address {
-        e.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::AdminNotSet))
-    }
-
-    /// Get pending admin address (if any)
-    ///
-    /// # Returns
-    /// Option containing pending admin address
-    pub fn get_pending_admin(e: Env) -> Option<Address> {
-        e.storage().instance().get(&DataKey::PendingAdmin)
-    }
-
-    /// Pause contract (emergency stop)
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    pub fn pause(e: Env, admin: Address) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::Paused, &true);
-
-        ContractPausedEvent {
-            admin: admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Unpause contract
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    pub fn unpause(e: Env, admin: Address) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::Paused, &false);
-
-        ContractUnpausedEvent {
-            admin: admin.clone(),
-        }
-        .publish(&e);
-    }
-
     /// Upgrade the factory contract to a new WASM hash
     ///
     /// # Arguments
     /// * `new_wasm_hash` - New WASM hash to upgrade to
     pub fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
         // Get admin and require their authorization
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::AdminNotSet));
+        let admin = factory_common::get_admin(&e);
         admin.require_auth();
 
         // Pause contract during upgrade for safety
-        e.storage().instance().set(&DataKey::Paused, &true);
+        factory_common::set_paused(&e, true);
 
         // Emit upgrade event
         ContractUpgradedEvent {
@@ -512,66 +448,6 @@ impl TokenFactory {
         e.deployer().update_current_contract_wasm(new_wasm_hash);
 
         // Note: Contract will be paused after upgrade, admin must unpause
-    }
-
-    /// Initiate admin transfer (step 1 of 2-step process)
-    ///
-    /// # Arguments
-    /// * `current_admin` - Current admin address (must match stored admin)
-    /// * `new_admin` - New admin address
-    pub fn initiate_admin_transfer(e: Env, current_admin: Address, new_admin: Address) {
-        current_admin.require_auth();
-        Self::require_admin(&e, &current_admin);
-
-        e.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
-
-        AdminTransferInitiatedEvent {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Accept admin transfer (step 2 of 2-step process)
-    ///
-    /// # Arguments
-    /// * `new_admin` - New admin address accepting the role
-    pub fn accept_admin_transfer(e: Env, new_admin: Address) {
-        new_admin.require_auth();
-
-        let pending_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::PendingAdmin)
-            .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::NoPendingAdmin));
-
-        if pending_admin != new_admin {
-            panic_with_error!(&e, TokenFactoryError::NotPendingAdmin);
-        }
-
-        // Transfer admin role
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
-        e.storage().instance().remove(&DataKey::PendingAdmin);
-
-        AdminTransferredEvent {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Cancel pending admin transfer
-    ///
-    /// # Arguments
-    /// * `current_admin` - Current admin address
-    pub fn cancel_admin_transfer(e: Env, current_admin: Address) {
-        current_admin.require_auth();
-        Self::require_admin(&e, &current_admin);
-
-        e.storage().instance().remove(&DataKey::PendingAdmin);
-
-        AdminTransferCancelledEvent {
-            admin: current_admin.clone(),
-        }
-        .publish(&e);
     }
 
     // Helper: Get WASM hash for token type
@@ -686,17 +562,74 @@ impl TokenFactory {
         }
     }
 
-    // Helper: Check admin authorization
-    fn require_admin(e: &Env, address: &Address) {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, TokenFactoryError::AdminNotSet));
+    /// Get admin address
+    ///
+    /// # Returns
+    /// Address of the admin
+    pub fn get_admin(e: Env) -> Address {
+        factory_common::get_admin(&e)
+    }
 
-        if admin != *address {
-            panic_with_error!(e, TokenFactoryError::NotAdmin);
+    /// Get pending admin address
+    ///
+    /// # Returns
+    /// Option containing pending admin address
+    pub fn get_pending_admin(e: Env) -> Option<Address> {
+        factory_common::get_pending_admin(&e)
+    }
+
+    /// Pause contract (emergency stop)
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (for authorization)
+    pub fn pause(e: Env, admin: Address) {
+        factory_common::pause(&e, &admin);
+
+        ContractPausedEvent { admin }.publish(&e);
+    }
+
+    /// Unpause contract
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (for authorization)
+    pub fn unpause(e: Env, admin: Address) {
+        factory_common::unpause(&e, &admin);
+
+        ContractUnpausedEvent { admin }.publish(&e);
+    }
+
+    /// Initiate admin transfer (step 1 of 2)
+    ///
+    /// # Arguments
+    /// * `current_admin` - Current admin address (must match stored admin)
+    /// * `new_admin` - New admin address
+    pub fn initiate_admin_transfer(e: Env, current_admin: Address, new_admin: Address) {
+        factory_common::initiate_admin_transfer(&e, &current_admin, &new_admin);
+
+        AdminTransferInitiatedEvent { new_admin }.publish(&e);
+    }
+
+    /// Accept admin transfer (step 2 of 2)
+    ///
+    /// # Arguments
+    /// * `new_admin` - New admin address accepting the role
+    pub fn accept_admin_transfer(e: Env, new_admin: Address) {
+        factory_common::accept_admin_transfer(&e, &new_admin);
+
+        AdminTransferredEvent { new_admin }.publish(&e);
+    }
+
+    /// Cancel pending admin transfer
+    ///
+    /// # Arguments
+    /// * `current_admin` - Current admin address
+    pub fn cancel_admin_transfer(e: Env, current_admin: Address) {
+        factory_common::cancel_admin_transfer(&e, &current_admin);
+
+        AdminTransferCancelledEvent {
+            admin: current_admin,
         }
+        .publish(&e);
     }
 }
 
@@ -1306,7 +1239,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #21)")] // ContractPaused
+    #[should_panic(expected = "Error(Contract, #5)")] // ContractPaused
     fn test_security_pause_prevents_deployment() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1408,7 +1341,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #20)")] // NotPendingAdmin
+    #[should_panic(expected = "Error(Contract, #4)")] // NotPendingAdmin
     fn test_twostep_admin_transfer_wrong_acceptor() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1425,7 +1358,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #19)")] // NoPendingAdmin
+    #[should_panic(expected = "Error(Contract, #3)")] // NoPendingAdmin
     fn test_twostep_admin_transfer_accept_without_initiate() {
         let env = Env::default();
         env.mock_all_auths();

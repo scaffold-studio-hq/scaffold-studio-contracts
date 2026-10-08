@@ -18,14 +18,11 @@ pub struct NFTFactory;
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
-    Admin,
-    PendingAdmin,              // Two-step admin transfer
     EnumerableWasm,
     RoyaltiesWasm,
     AccessControlWasm,
     DeployedNFTs,
     NFTCount,
-    Paused,                    // Emergency pause
 }
 
 #[contracttype]
@@ -109,14 +106,9 @@ pub struct AdminTransferCancelledEvent {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum NFTFactoryError {
-    NotAdmin = 1,
     WasmNotSet = 2,
     InvalidNFTType = 3,
     InvalidConfig = 4,
-    AdminNotSet = 5,
-    NoPendingAdmin = 6,
-    NotPendingAdmin = 7,
-    ContractPaused = 8,
     CounterOverflow = 9,
 }
 
@@ -127,7 +119,7 @@ impl NFTFactory {
     /// # Arguments
     /// * `admin` - Address that will have admin privileges
     pub fn __constructor(e: Env, admin: Address) {
-        e.storage().instance().set(&DataKey::Admin, &admin);
+        factory_common::set_admin(&e, &admin);
 
         // Initialize empty NFTs list
         let nfts: Vec<NFTInfo> = Vec::new(&e);
@@ -135,7 +127,7 @@ impl NFTFactory {
         e.storage().instance().set(&DataKey::NFTCount, &0u32);
 
         // Initialize paused flag
-        e.storage().instance().set(&DataKey::Paused, &false);
+        factory_common::set_paused(&e, false);
     }
 
     /// Set WASM hash for Enumerable NFT type
@@ -145,7 +137,7 @@ impl NFTFactory {
     /// * `wasm_hash` - WASM hash of the Enumerable NFT contract
     pub fn set_enumerable_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage()
             .instance()
             .set(&DataKey::EnumerableWasm, &wasm_hash);
@@ -165,7 +157,7 @@ impl NFTFactory {
     /// * `wasm_hash` - WASM hash of the Royalties NFT contract
     pub fn set_royalties_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage()
             .instance()
             .set(&DataKey::RoyaltiesWasm, &wasm_hash);
@@ -185,7 +177,7 @@ impl NFTFactory {
     /// * `wasm_hash` - WASM hash of the Access Control NFT contract
     pub fn set_access_control_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
-        Self::require_admin(&e, &admin);
+        factory_common::require_admin(&e, &admin);
         e.storage()
             .instance()
             .set(&DataKey::AccessControlWasm, &wasm_hash);
@@ -209,11 +201,8 @@ impl NFTFactory {
     pub fn deploy_nft(e: Env, deployer: Address, config: NFTConfig) -> Address {
         deployer.require_auth();
 
-        // Check if paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
-        if paused {
-            panic_with_error!(&e, NFTFactoryError::ContractPaused);
-        }
+        // Reject deployments while the contract is paused
+        factory_common::require_not_paused(&e);
 
         // Get WASM hash based on NFT type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.nft_type);
@@ -382,32 +371,17 @@ impl NFTFactory {
         e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0)
     }
 
-    /// Get admin address
-    ///
-    /// # Returns
-    /// Address of the admin
-    pub fn get_admin(e: Env) -> Address {
-        e.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::AdminNotSet))
-    }
-
     /// Upgrade the factory contract to a new WASM hash
     ///
     /// # Arguments
     /// * `new_wasm_hash` - New WASM hash to upgrade to
     pub fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
         // Get admin and require their authorization
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::AdminNotSet));
+        let admin = factory_common::get_admin(&e);
         admin.require_auth();
 
         // Pause contract during upgrade for safety
-        e.storage().instance().set(&DataKey::Paused, &true);
+        factory_common::set_paused(&e, true);
 
         // Emit upgrade event
         ContractUpgradedEvent {
@@ -418,105 +392,6 @@ impl NFTFactory {
         e.deployer().update_current_contract_wasm(new_wasm_hash);
 
         // Note: Contract will be paused after upgrade, admin must unpause
-    }
-
-    /// Pause the contract (emergency stop)
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    pub fn pause(e: Env, admin: Address) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-
-        e.storage().instance().set(&DataKey::Paused, &true);
-
-        ContractPausedEvent {
-            admin: admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Unpause the contract
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    pub fn unpause(e: Env, admin: Address) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-
-        e.storage().instance().set(&DataKey::Paused, &false);
-
-        ContractUnpausedEvent {
-            admin: admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Initiate admin transfer (step 1 of 2)
-    ///
-    /// # Arguments
-    /// * `current_admin` - Current admin address (must match stored admin)
-    /// * `new_admin` - New admin address to transfer to
-    pub fn initiate_admin_transfer(e: Env, current_admin: Address, new_admin: Address) {
-        current_admin.require_auth();
-        Self::require_admin(&e, &current_admin);
-
-        e.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
-
-        AdminTransferInitiatedEvent {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Accept admin transfer (step 2 of 2)
-    ///
-    /// # Arguments
-    /// * `new_admin` - New admin address (must match pending admin)
-    pub fn accept_admin_transfer(e: Env, new_admin: Address) {
-        new_admin.require_auth();
-
-        let pending_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::PendingAdmin)
-            .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::NoPendingAdmin));
-
-        if pending_admin != new_admin {
-            panic_with_error!(&e, NFTFactoryError::NotPendingAdmin);
-        }
-
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
-        e.storage().instance().remove(&DataKey::PendingAdmin);
-
-        AdminTransferredEvent {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Cancel admin transfer
-    ///
-    /// # Arguments
-    /// * `current_admin` - Current admin address (for authorization)
-    pub fn cancel_admin_transfer(e: Env, current_admin: Address) {
-        current_admin.require_auth();
-        Self::require_admin(&e, &current_admin);
-
-        e.storage().instance().remove(&DataKey::PendingAdmin);
-
-        AdminTransferCancelledEvent {
-            admin: current_admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Get pending admin address
-    ///
-    /// # Returns
-    /// Optional pending admin address
-    pub fn get_pending_admin(e: Env) -> Option<Address> {
-        e.storage().instance().get(&DataKey::PendingAdmin)
     }
 
     // Helper: Get WASM hash for NFT type
@@ -555,16 +430,74 @@ impl NFTFactory {
         }
     }
 
-    // Helper: Check admin authorization
-    fn require_admin(e: &Env, address: &Address) {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, NFTFactoryError::AdminNotSet));
-        if admin != *address {
-            panic_with_error!(e, NFTFactoryError::NotAdmin);
+    /// Get admin address
+    ///
+    /// # Returns
+    /// Address of the admin
+    pub fn get_admin(e: Env) -> Address {
+        factory_common::get_admin(&e)
+    }
+
+    /// Get pending admin address
+    ///
+    /// # Returns
+    /// Option containing pending admin address
+    pub fn get_pending_admin(e: Env) -> Option<Address> {
+        factory_common::get_pending_admin(&e)
+    }
+
+    /// Pause contract (emergency stop)
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (for authorization)
+    pub fn pause(e: Env, admin: Address) {
+        factory_common::pause(&e, &admin);
+
+        ContractPausedEvent { admin }.publish(&e);
+    }
+
+    /// Unpause contract
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (for authorization)
+    pub fn unpause(e: Env, admin: Address) {
+        factory_common::unpause(&e, &admin);
+
+        ContractUnpausedEvent { admin }.publish(&e);
+    }
+
+    /// Initiate admin transfer (step 1 of 2)
+    ///
+    /// # Arguments
+    /// * `current_admin` - Current admin address (must match stored admin)
+    /// * `new_admin` - New admin address
+    pub fn initiate_admin_transfer(e: Env, current_admin: Address, new_admin: Address) {
+        factory_common::initiate_admin_transfer(&e, &current_admin, &new_admin);
+
+        AdminTransferInitiatedEvent { new_admin }.publish(&e);
+    }
+
+    /// Accept admin transfer (step 2 of 2)
+    ///
+    /// # Arguments
+    /// * `new_admin` - New admin address accepting the role
+    pub fn accept_admin_transfer(e: Env, new_admin: Address) {
+        factory_common::accept_admin_transfer(&e, &new_admin);
+
+        AdminTransferredEvent { new_admin }.publish(&e);
+    }
+
+    /// Cancel pending admin transfer
+    ///
+    /// # Arguments
+    /// * `current_admin` - Current admin address
+    pub fn cancel_admin_transfer(e: Env, current_admin: Address) {
+        factory_common::cancel_admin_transfer(&e, &current_admin);
+
+        AdminTransferCancelledEvent {
+            admin: current_admin,
         }
+        .publish(&e);
     }
 }
 
