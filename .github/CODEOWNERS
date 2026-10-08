@@ -1,0 +1,25 @@
+# Who reviews what.
+#
+# GitHub reads this file from top to bottom and the LAST matching pattern wins, so the default
+# rule comes first and the security-sensitive paths are listed after it.
+#
+# `@scaffold-studio-hq/maintainers` must be a team (or set of users) with write access to this
+# repository. If the organisation names its team differently, update every line below.
+
+# Default owner for everything in the repository.
+*                                   @scaffold-studio-hq/maintainers
+
+# Deployed, value-bearing Soroban contracts. A merged change here can alter token, NFT or
+# governance behaviour for every deployed instance, so these paths require an owner review.
+/contracts/                         @scaffold-studio-hq/maintainers
+
+# CI. The workflow controls what runs on every pull request and holds the repository token.
+/.github/                           @scaffold-studio-hq/maintainers
+/.github/workflows/                 @scaffold-studio-hq/maintainers
+
+# Root manifests and the toolchain pin decide what is built and with which compiler.
+/Cargo.toml                         @scaffold-studio-hq/maintainers
+/Cargo.lock                         @scaffold-studio-hq/maintainers
+/rust-toolchain.toml                @scaffold-studio-hq/maintainers
+/package.json                       @scaffold-studio-hq/maintainers
+/package-lock.json                  @scaffold-studio-hq/maintainers
