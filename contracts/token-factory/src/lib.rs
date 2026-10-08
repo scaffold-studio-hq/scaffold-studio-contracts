@@ -30,6 +30,8 @@ pub enum DataKey {
     DeployedTokens,
     TokenCount,
     Paused,                      // Emergency pause
+    // Appended for upgrade-safe indexed records; existing key discriminants stay stable.
+    DeployedToken(u32),
 }
 
 #[contracttype]
@@ -148,9 +150,8 @@ impl TokenFactory {
     pub fn __constructor(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
-        // Initialize empty tokens list
-        let tokens: Vec<TokenInfo> = Vec::new(&e);
-        e.storage().instance().set(&DataKey::DeployedTokens, &tokens);
+        // A count and individually addressable persistent records replace the
+        // instance Vec; the old DeployedTokens key remains readable on upgrade.
         e.storage().instance().set(&DataKey::TokenCount, &0u32);
         e.storage().instance().set(&DataKey::Paused, &false);
     }
@@ -343,15 +344,8 @@ impl TokenFactory {
             name: Some(config.name.clone()),
         };
 
-        let mut tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or_else(|| Vec::new(&e));
-        tokens.push_back(token_info);
-        e.storage()
-            .instance()
-            .set(&DataKey::DeployedTokens, &tokens);
+        // One per-deployment write; never reserialize the growing legacy Vec.
+        e.storage().persistent().set(&DataKey::DeployedToken(count), &token_info);
 
         // Update token count
         e.storage()
@@ -377,10 +371,31 @@ impl TokenFactory {
     /// # Returns
     /// Vector of TokenInfo containing all deployed tokens
     pub fn get_deployed_tokens(e: Env) -> Vec<TokenInfo> {
-        e.storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or(Vec::new(&e))
+        let count = Self::get_token_count(e.clone());
+        Self::deployed_tokens_range(&e, 0, count)
+    }
+
+    /// Read a bounded page without rewriting or loading other indexed records.
+    /// The historical all-records getter remains for existing callers.
+    pub fn get_deployed_tokens_page(e: Env, start: u32, limit: u32) -> Vec<TokenInfo> {
+        let count = Self::get_token_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_tokens_range(&e, start, end)
+    }
+
+    fn deployed_tokens_range(e: &Env, start: u32, end: u32) -> Vec<TokenInfo> {
+        let mut result = Vec::new(e);
+        // On an upgraded contract, the old vector is a read-only fallback.
+        let legacy: Vec<TokenInfo> = e.storage().instance()
+            .get(&DataKey::DeployedTokens).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<TokenInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedToken(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get tokens by type
@@ -391,11 +406,7 @@ impl TokenFactory {
     /// # Returns
     /// Vector of TokenInfo for the specified type
     pub fn get_tokens_by_type(e: Env, token_type: TokenType) -> Vec<TokenInfo> {
-        let all_tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or(Vec::new(&e));
+        let all_tokens = Self::get_deployed_tokens(e.clone());
 
         let mut filtered = Vec::new(&e);
         for token in all_tokens.iter() {
@@ -414,11 +425,7 @@ impl TokenFactory {
     /// # Returns
     /// Vector of TokenInfo for tokens managed by the admin
     pub fn get_tokens_by_admin(e: Env, admin: Address) -> Vec<TokenInfo> {
-        let all_tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or(Vec::new(&e));
+        let all_tokens = Self::get_deployed_tokens(e.clone());
 
         let mut filtered = Vec::new(&e);
         for token in all_tokens.iter() {
