@@ -760,11 +760,10 @@ stellar-studio-contracts/
 **Documentation:**
 - [DEPLOYMENT.md](./DEPLOYMENT.md) - Detailed deployment instructions
 - [QUICK_START.md](./QUICK_START.md) - Quick reference guide
-- [Main README](../README.md) - Stellar Studio ecosystem overview
 
-**Related Repositories:**
-- [Stellar Studio Frontend](../stellar-studio-frontend/) - Web interface
-- [Stellar Studio MCP Server](../stellar-studio-mcp-server/) - AI tools backend
+**Repository Guides:**
+- [Soroban contract implementations](./contracts/) - Source code for deployed contract types
+- [Contributing](./CONTRIBUTING.md) - How to propose and review changes
 
 **External Links:**
 - [Stellar Documentation](https://developers.stellar.org/)
@@ -798,7 +797,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Part of the Stellar Studio Ecosystem**
 
-[Contracts](.) • [Frontend](../stellar-studio-frontend/) • [MCP Server](../stellar-studio-mcp-server/)
+[Contracts source](./contracts/) • [Deployment guide](./DEPLOYMENT.md) • [Quick start](./QUICK_START.md)
 
 Built with Rust and Soroban for Stellar
 
