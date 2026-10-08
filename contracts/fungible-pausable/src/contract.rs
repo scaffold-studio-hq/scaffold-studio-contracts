@@ -119,6 +119,7 @@ impl FungibleToken for ExampleContract {
         Self::ContractType::transfer_from(e, &spender, &from, &to, amount);
     }
 
+    #[when_not_paused]
     fn approve(e: &Env, owner: Address, spender: Address, amount: i128, live_until_ledger: u32) {
         Self::ContractType::approve(e, &owner, &spender, amount, live_until_ledger);
     }
