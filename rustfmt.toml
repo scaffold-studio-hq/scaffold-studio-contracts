@@ -1,0 +1,5 @@
+# Rust formatting for this workspace.
+#
+# The project uses the default rustfmt style; the file exists so that every
+# crate formats deterministically and the edition is explicit.
+edition = "2021"

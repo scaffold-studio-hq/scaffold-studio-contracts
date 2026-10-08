@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracterror, contracttype, panic_with_error, Address, BytesN, Env,
-    IntoVal, String, Val, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address,
+    BytesN, Env, IntoVal, String, Val, Vec,
 };
 
 /// TokenFactory - Deploys fungible token contracts
@@ -29,7 +29,7 @@ pub enum DataKey {
     VaultWasm,
     DeployedTokens,
     TokenCount,
-    Paused,                      // Emergency pause
+    Paused, // Emergency pause
 }
 
 #[contracttype]
@@ -55,8 +55,8 @@ pub struct TokenConfig {
     pub decimals: u32,
     pub salt: BytesN<32>,
     // Vault-specific parameters
-    pub asset: Option<Address>,          // For Vault: underlying asset address
-    pub decimals_offset: Option<u32>,    // For Vault: decimals offset
+    pub asset: Option<Address>, // For Vault: underlying asset address
+    pub decimals_offset: Option<u32>, // For Vault: decimals offset
 }
 
 #[contracttype]
@@ -150,7 +150,9 @@ impl TokenFactory {
 
         // Initialize empty tokens list
         let tokens: Vec<TokenInfo> = Vec::new(&e);
-        e.storage().instance().set(&DataKey::DeployedTokens, &tokens);
+        e.storage()
+            .instance()
+            .set(&DataKey::DeployedTokens, &tokens);
         e.storage().instance().set(&DataKey::TokenCount, &0u32);
         e.storage().instance().set(&DataKey::Paused, &false);
     }
@@ -163,7 +165,9 @@ impl TokenFactory {
     pub fn set_allowlist_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
         Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::AllowlistWasm, &wasm_hash);
+        e.storage()
+            .instance()
+            .set(&DataKey::AllowlistWasm, &wasm_hash);
 
         // Emit event
         WasmUpdatedEvent {
@@ -181,7 +185,9 @@ impl TokenFactory {
     pub fn set_blocklist_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
         Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::BlocklistWasm, &wasm_hash);
+        e.storage()
+            .instance()
+            .set(&DataKey::BlocklistWasm, &wasm_hash);
 
         // Emit event
         WasmUpdatedEvent {
@@ -217,7 +223,9 @@ impl TokenFactory {
     pub fn set_pausable_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
         admin.require_auth();
         Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::PausableWasm, &wasm_hash);
+        e.storage()
+            .instance()
+            .set(&DataKey::PausableWasm, &wasm_hash);
 
         // Emit event
         WasmUpdatedEvent {
@@ -257,7 +265,11 @@ impl TokenFactory {
         deployer.require_auth();
 
         // Check if contract is paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        let paused = e
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
         if paused {
             panic_with_error!(&e, TokenFactoryError::ContractPaused);
         }
@@ -272,9 +284,9 @@ impl TokenFactory {
         let token_address = match config.token_type {
             TokenType::Capped => {
                 // Capped token requires cap parameter - safe unwrap after validation
-                let cap = config.cap.unwrap_or_else(|| {
-                    panic_with_error!(&e, TokenFactoryError::MissingCap)
-                });
+                let cap = config
+                    .cap
+                    .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::MissingCap));
 
                 // Convert constructor args to Vec<Val>
                 let constructor_args: Vec<Val> = (
@@ -285,7 +297,8 @@ impl TokenFactory {
                     config.name.clone(),
                     config.symbol.clone(),
                     config.decimals,
-                ).into_val(&e);
+                )
+                    .into_val(&e);
 
                 e.deployer()
                     .with_address(e.current_contract_address(), config.salt)
@@ -294,12 +307,13 @@ impl TokenFactory {
             TokenType::Vault => {
                 // Vault tokens have a different constructor signature: (asset, decimals_offset)
                 // Validation ensures these fields are present
-                let asset = config.asset.clone().unwrap_or_else(|| {
-                    panic_with_error!(&e, TokenFactoryError::InvalidConfig)
-                });
-                let decimals_offset = config.decimals_offset.unwrap_or_else(|| {
-                    panic_with_error!(&e, TokenFactoryError::InvalidConfig)
-                });
+                let asset = config
+                    .asset
+                    .clone()
+                    .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::InvalidConfig));
+                let decimals_offset = config
+                    .decimals_offset
+                    .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::InvalidConfig));
 
                 // Convert constructor args to Vec<Val>
                 let constructor_args: Vec<Val> = (asset, decimals_offset).into_val(&e);
@@ -318,7 +332,8 @@ impl TokenFactory {
                     config.name.clone(),
                     config.symbol.clone(),
                     config.decimals,
-                ).into_val(&e);
+                )
+                    .into_val(&e);
 
                 e.deployer()
                     .with_address(e.current_contract_address(), config.salt)
@@ -328,11 +343,14 @@ impl TokenFactory {
 
         // Update state AFTER successful deployment
         // Increment token count with overflow protection
-        let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
-        let new_count = count.checked_add(1)
-            .unwrap_or_else(|| {
-                panic_with_error!(&e, TokenFactoryError::CounterOverflow)
-            });
+        let count: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TokenCount)
+            .unwrap_or(0);
+        let new_count = count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, TokenFactoryError::CounterOverflow));
 
         // Store token info
         let token_info = TokenInfo {
@@ -354,9 +372,7 @@ impl TokenFactory {
             .set(&DataKey::DeployedTokens, &tokens);
 
         // Update token count
-        e.storage()
-            .instance()
-            .set(&DataKey::TokenCount, &new_count);
+        e.storage().instance().set(&DataKey::TokenCount, &new_count);
 
         // Emit event
         TokenDeployedEvent {
@@ -434,7 +450,10 @@ impl TokenFactory {
     /// # Returns
     /// Total count of deployed tokens
     pub fn get_token_count(e: Env) -> u32 {
-        e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0)
+        e.storage()
+            .instance()
+            .get(&DataKey::TokenCount)
+            .unwrap_or(0)
     }
 
     /// Get admin address
@@ -523,7 +542,9 @@ impl TokenFactory {
         current_admin.require_auth();
         Self::require_admin(&e, &current_admin);
 
-        e.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
+        e.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
 
         AdminTransferInitiatedEvent {
             new_admin: new_admin.clone(),
@@ -703,7 +724,10 @@ impl TokenFactory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, Events}, Env, String};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        Env, String,
+    };
 
     fn setup_factory(env: &Env) -> (TokenFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -887,7 +911,10 @@ mod test {
         let (client, admin, _) = setup_with_wasm(&env);
 
         // Create a name with a null byte: "Test\0Name"
-        let name_with_null = String::from_bytes(&env, &[84u8, 101u8, 115u8, 116u8, 0u8, 78u8, 97u8, 109u8, 101u8]);
+        let name_with_null = String::from_bytes(
+            &env,
+            &[84u8, 101u8, 115u8, 116u8, 0u8, 78u8, 97u8, 109u8, 101u8],
+        );
 
         let config = TokenConfig {
             token_type: TokenType::Allowlist,

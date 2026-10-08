@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracterror, contracttype, panic_with_error, Address, BytesN, Env,
-    IntoVal, String, Val, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address,
+    BytesN, Env, IntoVal, String, Val, Vec,
 };
 
 /// NFTFactory - Deploys NFT contracts
@@ -19,13 +19,13 @@ pub struct NFTFactory;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
-    PendingAdmin,              // Two-step admin transfer
+    PendingAdmin, // Two-step admin transfer
     EnumerableWasm,
     RoyaltiesWasm,
     AccessControlWasm,
     DeployedNFTs,
     NFTCount,
-    Paused,                    // Emergency pause
+    Paused, // Emergency pause
 }
 
 #[contracttype]
@@ -40,13 +40,13 @@ pub enum NFTType {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NFTConfig {
     pub nft_type: NFTType,
-    pub owner: Address,                     // For Enumerable NFT
-    pub admin: Option<Address>,             // For Royalties and Access Control NFTs
-    pub manager: Option<Address>,           // For Royalties NFT
+    pub owner: Address,           // For Enumerable NFT
+    pub admin: Option<Address>,   // For Royalties and Access Control NFTs
+    pub manager: Option<Address>, // For Royalties NFT
     pub salt: BytesN<32>,
-    pub name: Option<String>,               // NFT collection name (default: "My Token")
-    pub symbol: Option<String>,             // NFT collection symbol (default: "TKN")
-    pub base_uri: Option<String>,           // Base URI for token metadata (default varies by type)
+    pub name: Option<String>,   // NFT collection name (default: "My Token")
+    pub symbol: Option<String>, // NFT collection symbol (default: "TKN")
+    pub base_uri: Option<String>, // Base URI for token metadata (default varies by type)
 }
 
 #[contracttype]
@@ -210,7 +210,11 @@ impl NFTFactory {
         deployer.require_auth();
 
         // Check if paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        let paused = e
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
         if paused {
             panic_with_error!(&e, NFTFactoryError::ContractPaused);
         }
@@ -222,56 +226,61 @@ impl NFTFactory {
         Self::validate_config(&e, &config);
 
         // Get metadata with defaults
-        let name = config.name.clone().unwrap_or_else(|| String::from_str(&e, "My Token"));
-        let symbol = config.symbol.clone().unwrap_or_else(|| String::from_str(&e, "TKN"));
+        let name = config
+            .name
+            .clone()
+            .unwrap_or_else(|| String::from_str(&e, "My Token"));
+        let symbol = config
+            .symbol
+            .clone()
+            .unwrap_or_else(|| String::from_str(&e, "TKN"));
 
         // Deploy using deployer pattern with constructor args based on NFT type
         let nft_address = match config.nft_type {
             NFTType::Enumerable => {
                 // Enumerable NFT constructor signature: (owner, base_uri, name, symbol)
-                let base_uri = config.base_uri.clone().unwrap_or_else(|| String::from_str(&e, "www.mytoken.com"));
-                let constructor_args: Vec<Val> = (
-                    config.owner.clone(),
-                    base_uri,
-                    name.clone(),
-                    symbol.clone(),
-                ).into_val(&e);
+                let base_uri = config
+                    .base_uri
+                    .clone()
+                    .unwrap_or_else(|| String::from_str(&e, "www.mytoken.com"));
+                let constructor_args: Vec<Val> =
+                    (config.owner.clone(), base_uri, name.clone(), symbol.clone()).into_val(&e);
                 e.deployer()
                     .with_address(e.current_contract_address(), config.salt)
                     .deploy_v2(wasm_hash, constructor_args)
             }
             NFTType::Royalties => {
                 // Royalties NFT constructor signature: (admin, manager, base_uri, name, symbol)
-                let admin = config.admin.clone().unwrap_or_else(|| {
-                    panic_with_error!(&e, NFTFactoryError::InvalidConfig)
-                });
-                let manager = config.manager.clone().unwrap_or_else(|| {
-                    panic_with_error!(&e, NFTFactoryError::InvalidConfig)
-                });
-                let base_uri = config.base_uri.clone().unwrap_or_else(|| String::from_str(&e, "https://example.com/nft/"));
-                let constructor_args: Vec<Val> = (
-                    admin,
-                    manager,
-                    base_uri,
-                    name.clone(),
-                    symbol.clone(),
-                ).into_val(&e);
+                let admin = config
+                    .admin
+                    .clone()
+                    .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::InvalidConfig));
+                let manager = config
+                    .manager
+                    .clone()
+                    .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::InvalidConfig));
+                let base_uri = config
+                    .base_uri
+                    .clone()
+                    .unwrap_or_else(|| String::from_str(&e, "https://example.com/nft/"));
+                let constructor_args: Vec<Val> =
+                    (admin, manager, base_uri, name.clone(), symbol.clone()).into_val(&e);
                 e.deployer()
                     .with_address(e.current_contract_address(), config.salt)
                     .deploy_v2(wasm_hash, constructor_args)
             }
             NFTType::AccessControl => {
                 // Access Control NFT constructor signature: (admin, base_uri, name, symbol)
-                let admin = config.admin.clone().unwrap_or_else(|| {
-                    panic_with_error!(&e, NFTFactoryError::InvalidConfig)
-                });
-                let base_uri = config.base_uri.clone().unwrap_or_else(|| String::from_str(&e, "www.mytoken.com"));
-                let constructor_args: Vec<Val> = (
-                    admin,
-                    base_uri,
-                    name.clone(),
-                    symbol.clone(),
-                ).into_val(&e);
+                let admin = config
+                    .admin
+                    .clone()
+                    .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::InvalidConfig));
+                let base_uri = config
+                    .base_uri
+                    .clone()
+                    .unwrap_or_else(|| String::from_str(&e, "www.mytoken.com"));
+                let constructor_args: Vec<Val> =
+                    (admin, base_uri, name.clone(), symbol.clone()).into_val(&e);
                 e.deployer()
                     .with_address(e.current_contract_address(), config.salt)
                     .deploy_v2(wasm_hash, constructor_args)
@@ -299,10 +308,9 @@ impl NFTFactory {
 
         // Increment NFT count with overflow protection
         let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
-        let new_count = count.checked_add(1)
-            .unwrap_or_else(|| {
-                panic_with_error!(&e, NFTFactoryError::CounterOverflow)
-            });
+        let new_count = count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::CounterOverflow));
         e.storage().instance().set(&DataKey::NFTCount, &new_count);
 
         // Emit event
@@ -461,7 +469,9 @@ impl NFTFactory {
         current_admin.require_auth();
         Self::require_admin(&e, &current_admin);
 
-        e.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
+        e.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
 
         AdminTransferInitiatedEvent {
             new_admin: new_admin.clone(),
