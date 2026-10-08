@@ -24,7 +24,12 @@
 - `get_governance_factory()` - Get GovernanceFactory address
 - `get_deployed_factories()` - List all factories
 - `get_admin()` - Get admin address
-- `transfer_admin(current_admin, new_admin)` - Transfer admin role
+- `initiate_admin_transfer(current_admin, new_admin)` - Current admin proposes a replacement; requires the current admin's authorization.
+- `get_pending_admin()` - Returns the pending new admin, or `None` if there is no proposal.
+- `accept_admin_transfer(new_admin)` - Pending new admin authorizes acceptance; the handoff takes effect only after this call.
+- `cancel_admin_transfer(current_admin)` - Current admin cancels a pending proposal.
+
+Admin transfers use a **two-step handshake**: the current admin initiates, then the proposed new admin accepts. A direct `transfer_admin` entrypoint does not exist.
 
 ---
 
@@ -141,14 +146,18 @@ stellar contract invoke \
 ### Deploy a Token (Example)
 
 ```bash
-# Deploy an Allowlist token
+# Every field of TokenConfig is present. Use a fresh 32-byte salt for each deployment.
+ADMIN="$(stellar keys address me)"
+SALT_HEX="$(openssl rand -hex 32)"
 stellar contract invoke \
   --id token_factory \
   -- \
   deploy_token \
-  --deployer me \
-  --config '{"token_type":"Allowlist","admin":"<address>","manager":"<address>","initial_supply":"1000000","cap":null,"salt":"<32-byte-salt>"}'
+  --deployer "$ADMIN" \
+  --config "$(printf '{"token_type":{"tag":"Allowlist"},"admin":"%s","manager":"%s","initial_supply":"1000000","cap":null,"name":"Example","symbol":"EXM","decimals":7,"salt":"%s","asset":null,"decimals_offset":null}' "$ADMIN" "$ADMIN" "$SALT_HEX")"
 ```
+
+The `token_type` contract argument is a tagged enum (`{"tag":"Allowlist"}`), not a bare `"Allowlist"` string. The salt is 32 random bytes encoded in hex, not placeholder text.
 
 ---
 
