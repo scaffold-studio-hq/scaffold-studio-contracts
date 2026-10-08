@@ -18,6 +18,17 @@ type Schema = {
 };
 
 /**
+ * The keys this wrapper owns. `clear()` only removes these, so unrelated keys
+ * written to the same origin's localStorage are left untouched.
+ */
+const STORAGE_KEYS: (keyof Schema)[] = [
+  "walletId",
+  "walletAddress",
+  "walletNetwork",
+  "networkPassphrase",
+];
+
+/**
  * Typed interface that follows the Web Storage API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API
  *
  * Implementation has been borrowed and simplified from https://www.npmjs.com/package/typed-local-store
@@ -70,7 +81,7 @@ class TypedStorage<T> {
   }
 
   public clear(): void {
-    this.storage?.clear();
+    STORAGE_KEYS.forEach((key) => this.storage?.removeItem(key.toString()));
   }
 }
 
