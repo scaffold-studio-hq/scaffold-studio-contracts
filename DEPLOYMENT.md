@@ -24,7 +24,12 @@
 - `get_governance_factory()` - Get GovernanceFactory address
 - `get_deployed_factories()` - List all factories
 - `get_admin()` - Get admin address
-- `transfer_admin(current_admin, new_admin)` - Transfer admin role
+- `initiate_admin_transfer(current_admin, new_admin)` - Start a two-step admin handover
+- `accept_admin_transfer(new_admin)` - Complete the handover (must be called by the pending admin)
+- `cancel_admin_transfer(current_admin)` - Cancel a pending handover
+- `get_pending_admin()` - Read the pending admin, if any
+
+**Admin transfer:** the role moves in two steps - the current admin calls `initiate_admin_transfer`, then the nominated address must call `accept_admin_transfer`; a pending handover can be cancelled with `cancel_admin_transfer` before it is accepted, and `get_pending_admin` reports the address mid-handover.
 
 ---
 
