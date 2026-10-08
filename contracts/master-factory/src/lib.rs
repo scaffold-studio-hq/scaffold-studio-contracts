@@ -600,7 +600,57 @@ impl MasterFactory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        Env, IntoVal, Map, Symbol, TryFromVal, Val,
+    };
+
+    // The TokenFactory WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod token_factory_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/token_factory.wasm");
+    }
+
+    // The NFTFactory WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod nft_factory_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/nft_factory.wasm");
+    }
+
+    // The GovernanceFactory WASM is produced by `stellar contract build` into
+    // the workspace `target/wasm32v1-none/release/` directory.
+    mod governance_factory_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/governance_factory.wasm");
+    }
+
+    /// Returns the `factory_type` carried by the `FactoryDeployedEvent` that
+    /// was published for `factory_address`, or `None` when no such event was
+    /// emitted.
+    fn factory_deployed_event_type(env: &Env, factory_address: &Address) -> Option<FactoryType> {
+        let event_topic: Val = Symbol::new(env, "factory_deployed_event").into_val(env);
+        let address_key = Symbol::new(env, "factory_address");
+        let factory_type_key = Symbol::new(env, "factory_type");
+
+        for (_, topics, data) in env.events().all().iter() {
+            if topics.get(0) != Some(event_topic.clone()) {
+                continue;
+            }
+            let Ok(event_data) = Map::<Symbol, Val>::try_from_val(env, &data) else {
+                continue;
+            };
+            let Some(address_val) = event_data.get(address_key.clone()) else {
+                continue;
+            };
+            if Address::try_from_val(env, &address_val).ok().as_ref() != Some(factory_address) {
+                continue;
+            }
+            if let Some(type_val) = event_data.get(factory_type_key.clone()) {
+                return FactoryType::try_from_val(env, &type_val).ok();
+            }
+        }
+        None
+    }
+
 
     fn setup_master_factory(env: &Env) -> (MasterFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -608,6 +658,83 @@ mod test {
         let client = MasterFactoryClient::new(env, &contract_id);
         (client, admin)
     }
+
+    // ===== Success-Path Deployment Tests =====
+
+    #[test]
+    fn test_deploy_nft_factory_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_master_factory(&env);
+
+        let wasm_hash = env.deployer().upload_contract_wasm(nft_factory_wasm::WASM);
+        let salt = BytesN::from_array(&env, &[12u8; 32]);
+
+        let factory_address = client.deploy_nft_factory(&admin, &wasm_hash, &salt);
+
+        assert_eq!(client.get_nft_factory(), Some(factory_address.clone()));
+        assert_eq!(client.get_token_factory(), None);
+        assert_eq!(client.get_deployed_factories().len(), 1);
+        assert_eq!(
+            factory_deployed_event_type(&env, &factory_address),
+            Some(FactoryType::NFT)
+        );
+    }
+
+    #[test]
+    fn test_deploy_governance_factory_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_master_factory(&env);
+
+        let wasm_hash = env.deployer().upload_contract_wasm(governance_factory_wasm::WASM);
+        let salt = BytesN::from_array(&env, &[13u8; 32]);
+
+        let factory_address = client.deploy_governance_factory(&admin, &wasm_hash, &salt);
+
+        assert_eq!(client.get_governance_factory(), Some(factory_address.clone()));
+        assert_eq!(client.get_nft_factory(), None);
+        assert_eq!(client.get_deployed_factories().len(), 1);
+        assert_eq!(
+            factory_deployed_event_type(&env, &factory_address),
+            Some(FactoryType::Governance)
+        );
+    }
+
+    #[test]
+    fn test_deploy_all_factories_records_three_entries() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_master_factory(&env);
+
+        let token_hash = env.deployer().upload_contract_wasm(token_factory_wasm::WASM);
+        let nft_hash = env.deployer().upload_contract_wasm(nft_factory_wasm::WASM);
+        let governance_hash = env.deployer().upload_contract_wasm(governance_factory_wasm::WASM);
+
+        let token_factory = client
+            .deploy_token_factory(&admin, &token_hash, &BytesN::from_array(&env, &[21u8; 32]));
+        let nft_factory =
+            client.deploy_nft_factory(&admin, &nft_hash, &BytesN::from_array(&env, &[22u8; 32]));
+        let governance_factory = client
+            .deploy_governance_factory(&admin, &governance_hash, &BytesN::from_array(&env, &[23u8; 32]));
+
+        assert_eq!(client.get_token_factory(), Some(token_factory.clone()));
+        assert_eq!(client.get_nft_factory(), Some(nft_factory.clone()));
+        assert_eq!(client.get_governance_factory(), Some(governance_factory.clone()));
+
+        let factories = client.get_deployed_factories();
+        assert_eq!(factories.len(), 3);
+        assert_eq!(factories.get(0).unwrap().factory_type, FactoryType::Token);
+        assert_eq!(factories.get(1).unwrap().factory_type, FactoryType::NFT);
+        assert_eq!(factories.get(2).unwrap().factory_type, FactoryType::Governance);
+        assert_eq!(factories.get(0).unwrap().address, token_factory);
+        assert_eq!(factories.get(1).unwrap().address, nft_factory);
+        assert_eq!(factories.get(2).unwrap().address, governance_factory);
+    }
+
 
     // ===== Constructor Tests =====
 
