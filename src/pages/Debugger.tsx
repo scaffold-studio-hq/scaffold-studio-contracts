@@ -21,29 +21,24 @@ const Debugger: React.FC = () => {
     new Set([...Object.keys(contractMap), ...Object.keys(failedContracts)]),
   );
   useEffect(() => {
-    if (!isLoading && contractKeys.length > 0) {
-      if (contractName && contractKeys.includes(contractName)) {
-        setSelectedContract(contractName);
-      } else {
-        setSelectedContract(contractKeys[0]);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractName, isLoading, contractKeys.join(",")]);
+    if (isLoading || contractKeys.length === 0) return;
 
-  useEffect(() => {
-    if (!isLoading && contractKeys.length > 0) {
-      if (contractName && contractKeys.includes(contractName)) {
-        setSelectedContract(contractName);
-      } else if (!contractName) {
-        // Redirect to the first contract if no contractName in URL
-        navigate(`/debug/${contractKeys[0]}`, { replace: true });
-      } else {
-        setSelectedContract(contractKeys[0]);
-      }
+    const nextContract =
+      contractName && contractKeys.includes(contractName)
+        ? contractName
+        : contractKeys[0];
+
+    // Keep the selected contract in sync with the route without redundant updates.
+    setSelectedContract((current) =>
+      current === nextContract ? current : nextContract,
+    );
+
+    // Only canonicalize the URL when the route has no contract parameter.
+    if (!contractName) {
+      navigate(`/debug/${nextContract}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractName, isLoading, contractKeys.join(",")]);
+  }, [contractName, isLoading, contractKeys.join(","), navigate]);
 
   if (isLoading) {
     return (
@@ -144,7 +139,7 @@ const Debugger: React.FC = () => {
       {contractMap[selectedContract] && (
         <>
           <Layout.Inset>
-            <div style={{ marginTop: "0 2rem" }}>
+            <div style={{ marginTop: "0" }}>
               <div style={{ display: "flex", flexFlow: "column", gap: "1rem" }}>
                 {/* Contract detail card */}
                 <div
