@@ -44,11 +44,6 @@ const Home: React.FC = () => (
         <Code size="md">import game from "./contracts/guess_the_number";</Code>
       </pre>
       <Text as="p" size="md">
-        If your contract emits events, check out the{" "}
-        <Code size="md">useSubscription</Code> hook in the{" "}
-        <Code size="md">hooks/</Code> folder to listen to them.
-      </Text>
-      <Text as="p" size="md">
         As an example, here's the <Code size="md">GuessTheNumber</Code>{" "}
         component. Make changes to the contract and the component and see how
         things change!
