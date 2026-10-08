@@ -1,0 +1,10 @@
+# Issue chooser configuration.
+# https://docs.github.com/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/scaffold-studio-hq/scaffold-studio-contracts/security/advisories/new
+    about: Report a security vulnerability privately instead of opening a public issue.
+  - name: Question or discussion
+    url: https://github.com/scaffold-studio-hq/scaffold-studio-contracts/issues
+    about: Ask a question or start a discussion with the maintainers.
