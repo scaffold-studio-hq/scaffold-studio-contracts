@@ -588,7 +588,7 @@ RPC: http://localhost:8000/rpc
 Passphrase: Standalone Network ; February 2017
 
 # Start network
-stellar network start standalone
+stellar network start local
 
 # Deploy
 ./setup-local.sh
