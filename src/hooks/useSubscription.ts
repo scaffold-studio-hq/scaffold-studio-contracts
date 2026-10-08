@@ -2,6 +2,7 @@ import * as React from "react";
 import { Server, Api } from "@stellar/stellar-sdk/rpc";
 import { xdr } from "@stellar/stellar-sdk";
 import { rpcUrl, stellarNetwork } from "../contracts/util";
+import { useNotification } from "./useNotification";
 
 /**
  * Concatenated `${contractId}:${topic}`
@@ -35,12 +36,21 @@ export function useSubscription(
   onEvent: (event: Api.EventResponse) => void,
   pollInterval = 5000,
 ) {
+  const { addNotification } = useNotification();
   const id = `${contractId}:${topic}`;
   paging[id] = paging[id] || {};
 
   React.useEffect(() => {
     let timeoutId: NodeJS.Timeout | null = null;
     let stop = false;
+    let lastErrorNoticeAt = 0;
+    const notifyError = (message: string) => {
+      const now = Date.now();
+      if (now - lastErrorNoticeAt >= 15_000) {
+        lastErrorNoticeAt = now;
+        addNotification(message, "error");
+      }
+    };
 
     async function pollEvents(): Promise<void> {
       try {
@@ -72,18 +82,15 @@ export function useSubscription(
           response.events.forEach((event) => {
             try {
               onEvent(event);
-            } catch (error) {
-              console.error(
-                "Poll Events: subscription callback had error: ",
-                error,
-              );
+            } catch {
+              notifyError("Contract event handler failed. Events may be delayed.");
             } finally {
               paging[id].pagingToken = event.pagingToken;
             }
           });
         }
-      } catch (error) {
-        console.error("Poll Events: error: ", error);
+      } catch {
+        notifyError("Unable to fetch contract events. Retrying shortly.");
       } finally {
         if (!stop) {
           timeoutId = setTimeout(() => void pollEvents(), pollInterval);
@@ -97,5 +104,5 @@ export function useSubscription(
       if (timeoutId != null) clearTimeout(timeoutId);
       stop = true;
     };
-  }, [contractId, topic, onEvent, id, pollInterval]);
+  }, [contractId, topic, onEvent, id, pollInterval, addNotification]);
 }

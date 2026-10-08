@@ -8,6 +8,7 @@ import {
 } from "react";
 import { wallet } from "../util/wallet";
 import storage from "../util/storage";
+import { useNotification } from "../hooks/useNotification";
 
 export interface WalletContextType {
   address?: string;
@@ -33,6 +34,8 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     useState<Omit<WalletContextType, "isPending">>(initialState);
   const [isPending, startTransition] = useTransition();
   const popupLock = useRef(false);
+  const lastErrorNoticeAt = useRef(0);
+  const { addNotification } = useNotification();
   const signTransaction = wallet.signTransaction.bind(wallet);
 
   const nullify = () => {
@@ -103,13 +106,14 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
           storage.setItem("walletAddress", a.address);
           updateState({ ...a, ...n });
         }
-      } catch (e) {
-        // If `getNetwork` or `getAddress` throw errors... sign the user out???
+      } catch {
+        // Keep sign-out non-fatal and do not expose wallet or network errors in logs.
         nullify();
-        // then log the error (instead of throwing) so we have visibility
-        // into the error while working on Scaffold Stellar but we do not
-        // crash the app process
-        console.error(e);
+        const now = Date.now();
+        if (now - lastErrorNoticeAt.current >= 15_000) {
+          lastErrorNoticeAt.current = now;
+          addNotification("Wallet connection failed. Please reconnect.", "error");
+        }
       } finally {
         popupLock.current = false;
       }
