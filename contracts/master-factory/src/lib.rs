@@ -85,7 +85,6 @@ pub struct AdminTransferCancelledEvent {
 pub enum MasterFactoryError {
     NotAdmin = 1,
     FactoryAlreadyDeployed = 2,
-    FactoryNotFound = 3,
     AdminNotSet = 4,
     Reentrancy = 5,
     DuplicateSalt = 6,

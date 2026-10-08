@@ -111,7 +111,6 @@ pub struct AdminTransferCancelledEvent {
 pub enum NFTFactoryError {
     NotAdmin = 1,
     WasmNotSet = 2,
-    InvalidNFTType = 3,
     InvalidConfig = 4,
     AdminNotSet = 5,
     NoPendingAdmin = 6,
