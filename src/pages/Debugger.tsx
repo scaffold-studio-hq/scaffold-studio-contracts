@@ -21,26 +21,21 @@ const Debugger: React.FC = () => {
     new Set([...Object.keys(contractMap), ...Object.keys(failedContracts)]),
   );
   useEffect(() => {
-    if (!isLoading && contractKeys.length > 0) {
-      if (contractName && contractKeys.includes(contractName)) {
-        setSelectedContract(contractName);
-      } else {
-        setSelectedContract(contractKeys[0]);
-      }
+    if (isLoading || contractKeys.length === 0) {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractName, isLoading, contractKeys.join(",")]);
 
-  useEffect(() => {
-    if (!isLoading && contractKeys.length > 0) {
-      if (contractName && contractKeys.includes(contractName)) {
-        setSelectedContract(contractName);
-      } else if (!contractName) {
-        // Redirect to the first contract if no contractName in URL
-        navigate(`/debug/${contractKeys[0]}`, { replace: true });
-      } else {
-        setSelectedContract(contractKeys[0]);
-      }
+    // Contract named in the URL (and still present): select it.
+    if (contractName && contractKeys.includes(contractName)) {
+      setSelectedContract(contractName);
+      return;
+    }
+
+    // Otherwise fall back to the first contract, and keep the URL in sync
+    // only when it does not already name a contract.
+    setSelectedContract(contractKeys[0]);
+    if (!contractName) {
+      navigate(`/debug/${contractKeys[0]}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contractName, isLoading, contractKeys.join(",")]);
@@ -144,7 +139,7 @@ const Debugger: React.FC = () => {
       {contractMap[selectedContract] && (
         <>
           <Layout.Inset>
-            <div style={{ marginTop: "0 2rem" }}>
+            <div style={{ marginTop: "2rem" }}>
               <div style={{ display: "flex", flexFlow: "column", gap: "1rem" }}>
                 {/* Contract detail card */}
                 <div
