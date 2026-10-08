@@ -22,7 +22,10 @@ NC='\033[0m' # No Color
 NETWORK="local"  # Use "local" instead of "standalone" for stellar CLI
 ADMIN_IDENTITY="me" # Uses stellar CLI identity
 
-# Factory addresses on local network (from your registry)
+# Factory addresses on the current local network.
+# NOTE: local addresses are ephemeral - they change whenever the Stellar Docker
+# container is recreated. Re-run this script after a reset and read the addresses
+# it prints at the end.
 MASTER_FACTORY="CCNVPWKVKVLNPYWXBEMH4QEQ6HMVSOJBQ3GGHW55L6IJY4EXGQCXYTBU"
 TOKEN_FACTORY="CCAX3IFONMYLL3RJA3MFUGG4NPRL2AE376TJFTBG6XUL64H6QMR3UJGM"
 NFT_FACTORY="CAJ75GRCGSRZXNFQFFIQNLS22STHMQESOT4LDAUVASIMHE4HJXS7UEYY"
@@ -204,5 +207,14 @@ echo "    - Access Control: $ACCESS_CONTROL_HASH"
 echo ""
 echo "  Governance Factory:"
 echo "    - Merkle Voting: $MERKLE_VOTING_HASH"
+echo ""
+echo "Factory addresses (local network):"
+echo "  MasterFactory:     $MASTER_FACTORY"
+echo "  TokenFactory:      $TOKEN_FACTORY"
+echo "  NFTFactory:        $NFT_FACTORY"
+echo "  GovernanceFactory: $GOVERNANCE_FACTORY"
+echo ""
+echo "Local addresses are ephemeral: they change whenever the Stellar Docker container"
+echo "is recreated. Re-run this script and read the addresses above after every reset."
 echo ""
 echo "You can now deploy contracts on local network!"
