@@ -55,6 +55,9 @@ impl MerkleVoting {
     }
 
     pub fn vote(e: &Env, vote_data: VoteData, proof: Vec<BytesN<32>>, approve: bool) {
+        // A valid Merkle proof establishes eligibility, not authorization to cast the vote.
+        vote_data.account.require_auth();
+
         // Verify merkle proof using the MerkleDistributor
         Distributor::verify_and_set_claimed(e, vote_data.clone(), proof);
 
