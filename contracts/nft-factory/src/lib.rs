@@ -224,15 +224,17 @@ impl NFTFactory {
         // Get metadata with defaults
         let name = config.name.clone().unwrap_or_else(|| String::from_str(&e, "My Token"));
         let symbol = config.symbol.clone().unwrap_or_else(|| String::from_str(&e, "TKN"));
+        // Resolve `base_uri` up-front so the value recorded in `NFTInfo` matches
+        // the value passed to the deployed contract's constructor
+        let base_uri = Self::resolve_base_uri(&e, &config);
 
         // Deploy using deployer pattern with constructor args based on NFT type
         let nft_address = match config.nft_type {
             NFTType::Enumerable => {
                 // Enumerable NFT constructor signature: (owner, base_uri, name, symbol)
-                let base_uri = config.base_uri.clone().unwrap_or_else(|| String::from_str(&e, "www.mytoken.com"));
                 let constructor_args: Vec<Val> = (
                     config.owner.clone(),
-                    base_uri,
+                    base_uri.clone(),
                     name.clone(),
                     symbol.clone(),
                 ).into_val(&e);
@@ -248,11 +250,10 @@ impl NFTFactory {
                 let manager = config.manager.clone().unwrap_or_else(|| {
                     panic_with_error!(&e, NFTFactoryError::InvalidConfig)
                 });
-                let base_uri = config.base_uri.clone().unwrap_or_else(|| String::from_str(&e, "https://example.com/nft/"));
                 let constructor_args: Vec<Val> = (
                     admin,
                     manager,
-                    base_uri,
+                    base_uri.clone(),
                     name.clone(),
                     symbol.clone(),
                 ).into_val(&e);
@@ -265,10 +266,9 @@ impl NFTFactory {
                 let admin = config.admin.clone().unwrap_or_else(|| {
                     panic_with_error!(&e, NFTFactoryError::InvalidConfig)
                 });
-                let base_uri = config.base_uri.clone().unwrap_or_else(|| String::from_str(&e, "www.mytoken.com"));
                 let constructor_args: Vec<Val> = (
                     admin,
-                    base_uri,
+                    base_uri.clone(),
                     name.clone(),
                     symbol.clone(),
                 ).into_val(&e);
@@ -286,7 +286,7 @@ impl NFTFactory {
             timestamp: e.ledger().timestamp(),
             name: Some(name),
             symbol: Some(symbol),
-            base_uri: config.base_uri.clone(),
+            base_uri: Some(base_uri),
         };
 
         let mut nfts: Vec<NFTInfo> = e
@@ -517,6 +517,16 @@ impl NFTFactory {
     /// Optional pending admin address
     pub fn get_pending_admin(e: Env) -> Option<Address> {
         e.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
+    // Helper: Resolve the base_uri, applying the per-type default when the
+    // caller omitted it. This must match the value passed to the deployed
+    // contract's constructor.
+    fn resolve_base_uri(e: &Env, config: &NFTConfig) -> String {
+        config.base_uri.clone().unwrap_or_else(|| match config.nft_type {
+            NFTType::Royalties => String::from_str(e, "https://example.com/nft/"),
+            _ => String::from_str(e, "www.mytoken.com"),
+        })
     }
 
     // Helper: Get WASM hash for NFT type
