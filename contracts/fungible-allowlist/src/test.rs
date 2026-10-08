@@ -1,6 +1,6 @@
 extern crate std;
 
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 use crate::contract::{ExampleContract, ExampleContractClient};
 
@@ -10,7 +10,13 @@ fn create_client<'a>(
     manager: &Address,
     initial_supply: &i128,
 ) -> ExampleContractClient<'a> {
-    let address = e.register(ExampleContract, (admin, manager, initial_supply));
+    let name = String::from_str(e, "AllowList Token");
+    let symbol = String::from_str(e, "ALT");
+    let decimals = 7;
+    let address = e.register(
+        ExampleContract,
+        (admin, manager, initial_supply, &name, &symbol, decimals),
+    );
     ExampleContractClient::new(e, &address)
 }
 
@@ -151,4 +157,36 @@ fn allowlist_approve_override_works() {
     // Approve user2 to transfer from user1
     client.approve(&user1, &user2, &transfer_amount, &1000);
     assert_eq!(client.allowance(&user1, &user2), transfer_amount);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #113)")]
+fn disallowed_spender_cannot_use_stale_allowance() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let manager = Address::generate(&e);
+    let user1 = Address::generate(&e);
+    let user2 = Address::generate(&e);
+    let initial_supply = 1_000_000;
+    let client = create_client(&e, &admin, &manager, &initial_supply);
+    let transfer_amount = 1000;
+
+    e.mock_all_auths();
+
+    // user1 is an allowed recipient and user2 starts out allowed
+    client.allow_user(&user1, &manager);
+    client.allow_user(&user2, &manager);
+    assert!(client.allowed(&user1));
+    assert!(client.allowed(&user2));
+
+    // Admin grants user2 an allowance while user2 is allowed
+    client.approve(&admin, &user2, &transfer_amount, &1000);
+    assert_eq!(client.allowance(&admin, &user2), transfer_amount);
+
+    // Manager disallows the spender after the allowance exists
+    client.disallow_user(&user2, &manager);
+    assert!(!client.allowed(&user2));
+
+    // The stale allowance must not let user2 move admin's tokens
+    client.transfer_from(&user2, &admin, &user1, &transfer_amount);
 }
