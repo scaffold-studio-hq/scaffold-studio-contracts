@@ -600,7 +600,45 @@ impl MasterFactory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Events},
+        Env, IntoVal, Map, Symbol, TryFromVal, Val,
+    };
+
+    // The TokenFactory WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod token_factory_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/token_factory.wasm");
+    }
+
+    /// Returns the `factory_type` carried by the `FactoryDeployedEvent` that
+    /// was published for `factory_address`, or `None` when no such event was
+    /// emitted.
+    fn factory_deployed_event_type(env: &Env, factory_address: &Address) -> Option<FactoryType> {
+        let event_topic: Val = Symbol::new(env, "factory_deployed_event").into_val(env);
+        let address_key = Symbol::new(env, "factory_address");
+        let factory_type_key = Symbol::new(env, "factory_type");
+
+        for (_, topics, data) in env.events().all().iter() {
+            if topics.get(0) != Some(event_topic.clone()) {
+                continue;
+            }
+            let Ok(event_data) = Map::<Symbol, Val>::try_from_val(env, &data) else {
+                continue;
+            };
+            let Some(address_val) = event_data.get(address_key.clone()) else {
+                continue;
+            };
+            if Address::try_from_val(env, &address_val).ok().as_ref() != Some(factory_address) {
+                continue;
+            }
+            if let Some(type_val) = event_data.get(factory_type_key.clone()) {
+                return FactoryType::try_from_val(env, &type_val).ok();
+            }
+        }
+        None
+    }
+
 
     fn setup_master_factory(env: &Env) -> (MasterFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -608,6 +646,40 @@ mod test {
         let client = MasterFactoryClient::new(env, &contract_id);
         (client, admin)
     }
+
+    // ===== Success-Path Deployment Tests =====
+
+    #[test]
+    fn test_deploy_token_factory_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_master_factory(&env);
+
+        let wasm_hash = env.deployer().upload_contract_wasm(token_factory_wasm::WASM);
+        let salt = BytesN::from_array(&env, &[11u8; 32]);
+
+        let factory_address = client.deploy_token_factory(&admin, &wasm_hash, &salt);
+
+        // The returned address is persisted and recorded in the deployed list.
+        assert_eq!(client.get_token_factory(), Some(factory_address.clone()));
+        let factories = client.get_deployed_factories();
+        assert_eq!(factories.len(), 1);
+        let info = factories.get(0).unwrap();
+        assert_eq!(info.address, factory_address);
+        assert_eq!(info.factory_type, FactoryType::Token);
+
+        // FactoryDeployedEvent carries the same address and factory type.
+        assert_eq!(
+            factory_deployed_event_type(&env, &factory_address),
+            Some(FactoryType::Token)
+        );
+
+        // The deployer is installed as the new factory's admin.
+        let deployed_factory = token_factory_wasm::Client::new(&env, &factory_address);
+        assert_eq!(deployed_factory.get_admin(), admin);
+    }
+
 
     // ===== Constructor Tests =====
 
