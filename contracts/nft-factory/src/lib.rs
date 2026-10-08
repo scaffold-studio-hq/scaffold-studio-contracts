@@ -25,6 +25,7 @@ pub enum DataKey {
     AccessControlWasm,
     DeployedNFTs,
     NFTCount,
+    UsedSalts(BytesN<32>),     // Salts consumed by successful deployments
     Paused,                    // Emergency pause
 }
 
@@ -118,6 +119,9 @@ pub enum NFTFactoryError {
     NotPendingAdmin = 7,
     ContractPaused = 8,
     CounterOverflow = 9,
+    /// The supplied deployment salt has already been used for a previous
+    /// successful deployment.
+    DuplicateSalt = 10,
 }
 
 #[contractimpl]
@@ -215,6 +219,13 @@ impl NFTFactory {
             panic_with_error!(&e, NFTFactoryError::ContractPaused);
         }
 
+        // Reject a salt that has already produced an NFT contract: deterministic
+        // addressing means reusing it would target an existing address
+        let salt_key = DataKey::UsedSalts(config.salt.clone());
+        if e.storage().persistent().has(&salt_key) {
+            panic_with_error!(&e, NFTFactoryError::DuplicateSalt);
+        }
+
         // Get WASM hash based on NFT type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.nft_type);
 
@@ -277,6 +288,9 @@ impl NFTFactory {
                     .deploy_v2(wasm_hash, constructor_args)
             }
         };
+
+        // Mark the salt as consumed now that the deployment succeeded
+        e.storage().persistent().set(&salt_key, &true);
 
         // Store NFT info
         let nft_info = NFTInfo {
