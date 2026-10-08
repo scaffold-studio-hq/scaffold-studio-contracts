@@ -1207,55 +1207,6 @@ mod test {
 
     #[test]
     #[ignore = "Requires real WASM deployment - move to integration tests"]
-    #[should_panic(expected = "Error(Contract, #14)")] // DuplicateSalt
-    fn test_security_salt_duplication_prevention() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let (client, admin, wasm_hash) = setup_with_wasm(&env);
-        client.set_allowlist_wasm(&admin, &wasm_hash);
-
-        let deployer = Address::generate(&env);
-        let admin_addr = Address::generate(&env);
-        let salt = BytesN::from_array(&env, &[42u8; 32]);
-
-        let config = TokenConfig {
-            token_type: TokenType::Allowlist,
-            admin: admin_addr.clone(),
-            manager: admin_addr.clone(),
-            initial_supply: 1000,
-            cap: None,
-            name: String::from_str(&env, "Token1"),
-            symbol: String::from_str(&env, "TK1"),
-            decimals: 7,
-            salt: salt.clone(),
-            asset: None,
-            decimals_offset: None,
-        };
-
-        // First deployment should succeed
-        client.deploy_token(&deployer, &config);
-
-        // Second deployment with same salt should fail
-        let config2 = TokenConfig {
-            token_type: TokenType::Allowlist,
-            admin: admin_addr.clone(),
-            manager: admin_addr.clone(),
-            initial_supply: 2000,
-            cap: None,
-            name: String::from_str(&env, "Token2"),
-            symbol: String::from_str(&env, "TK2"),
-            decimals: 7,
-            salt: salt.clone(), // Same salt!
-            asset: None,
-            decimals_offset: None,
-        };
-
-        client.deploy_token(&deployer, &config2); // Should panic with DuplicateSalt
-    }
-
-    #[test]
-    #[ignore = "Requires real WASM deployment - move to integration tests"]
     #[should_panic(expected = "Error(Contract, #15)")] // RateLimitExceeded
     fn test_security_rate_limiting_dos_protection() {
         let env = Env::default();
