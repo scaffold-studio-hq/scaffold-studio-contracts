@@ -27,7 +27,7 @@ pub enum DataKey {
     CappedWasm,
     PausableWasm,
     VaultWasm,
-    DeployedTokens,
+    DeployedToken(u32),          // Indexed deployed-token record
     TokenCount,
     Paused,                      // Emergency pause
 }
@@ -141,6 +141,13 @@ pub enum TokenFactoryError {
 
 #[contractimpl]
 impl TokenFactory {
+    /// Ledger count below which a deployed-token record's TTL is refreshed.
+    /// Approximately 30 days at ~5s per ledger.
+    const RECORD_TTL_THRESHOLD: u32 = 518_400;
+    /// TTL (in ledgers) a deployed-token record is extended to. Approximately
+    /// one year at ~5s per ledger.
+    const RECORD_TTL_EXTEND_TO: u32 = 6_307_200;
+
     /// Initialize TokenFactory with admin address
     ///
     /// # Arguments
@@ -148,9 +155,8 @@ impl TokenFactory {
     pub fn __constructor(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
-        // Initialize empty tokens list
-        let tokens: Vec<TokenInfo> = Vec::new(&e);
-        e.storage().instance().set(&DataKey::DeployedTokens, &tokens);
+        // Deployed tokens are stored under indexed persistent keys; only the
+        // small counter lives in instance storage.
         e.storage().instance().set(&DataKey::TokenCount, &0u32);
         e.storage().instance().set(&DataKey::Paused, &false);
     }
@@ -343,17 +349,17 @@ impl TokenFactory {
             name: Some(config.name.clone()),
         };
 
-        let mut tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or_else(|| Vec::new(&e));
-        tokens.push_back(token_info);
-        e.storage()
-            .instance()
-            .set(&DataKey::DeployedTokens, &tokens);
+        // Store the record under its own indexed persistent key so a deployment
+        // never rewrites the whole list.
+        let index_key = DataKey::DeployedToken(count);
+        e.storage().persistent().set(&index_key, &token_info);
+        e.storage().persistent().extend_ttl(
+            &index_key,
+            Self::RECORD_TTL_THRESHOLD,
+            Self::RECORD_TTL_EXTEND_TO,
+        );
 
-        // Update token count
+        // Update token count (next index and query bound)
         e.storage()
             .instance()
             .set(&DataKey::TokenCount, &new_count);
@@ -377,10 +383,43 @@ impl TokenFactory {
     /// # Returns
     /// Vector of TokenInfo containing all deployed tokens
     pub fn get_deployed_tokens(e: Env) -> Vec<TokenInfo> {
-        e.storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or(Vec::new(&e))
+        let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
+        let mut tokens = Vec::new(&e);
+        for i in 0..count {
+            if let Some(token) = e
+                .storage()
+                .persistent()
+                .get::<_, TokenInfo>(&DataKey::DeployedToken(i))
+            {
+                tokens.push_back(token);
+            }
+        }
+        tokens
+    }
+
+    /// Get a page of deployed tokens
+    ///
+    /// # Arguments
+    /// * `start` - Index of the first record to return
+    /// * `limit` - Maximum number of records to return
+    ///
+    /// # Returns
+    /// Vector of TokenInfo for the requested page
+    pub fn get_deployed_tokens_paginated(e: Env, start: u32, limit: u32) -> Vec<TokenInfo> {
+        let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
+        let mut tokens = Vec::new(&e);
+        let mut i = start;
+        while i < count && tokens.len() < limit {
+            if let Some(token) = e
+                .storage()
+                .persistent()
+                .get::<_, TokenInfo>(&DataKey::DeployedToken(i))
+            {
+                tokens.push_back(token);
+            }
+            i += 1;
+        }
+        tokens
     }
 
     /// Get tokens by type
@@ -391,16 +430,17 @@ impl TokenFactory {
     /// # Returns
     /// Vector of TokenInfo for the specified type
     pub fn get_tokens_by_type(e: Env, token_type: TokenType) -> Vec<TokenInfo> {
-        let all_tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or(Vec::new(&e));
-
+        let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
         let mut filtered = Vec::new(&e);
-        for token in all_tokens.iter() {
-            if token.token_type == token_type {
-                filtered.push_back(token);
+        for i in 0..count {
+            if let Some(token) = e
+                .storage()
+                .persistent()
+                .get::<_, TokenInfo>(&DataKey::DeployedToken(i))
+            {
+                if token.token_type == token_type {
+                    filtered.push_back(token);
+                }
             }
         }
         filtered
@@ -414,16 +454,17 @@ impl TokenFactory {
     /// # Returns
     /// Vector of TokenInfo for tokens managed by the admin
     pub fn get_tokens_by_admin(e: Env, admin: Address) -> Vec<TokenInfo> {
-        let all_tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or(Vec::new(&e));
-
+        let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
         let mut filtered = Vec::new(&e);
-        for token in all_tokens.iter() {
-            if token.admin == admin {
-                filtered.push_back(token);
+        for i in 0..count {
+            if let Some(token) = e
+                .storage()
+                .persistent()
+                .get::<_, TokenInfo>(&DataKey::DeployedToken(i))
+            {
+                if token.admin == admin {
+                    filtered.push_back(token);
+                }
             }
         }
         filtered

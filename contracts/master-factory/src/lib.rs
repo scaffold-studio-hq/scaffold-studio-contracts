@@ -18,7 +18,8 @@ pub enum DataKey {
     TokenFactory,
     NFTFactory,
     GovernanceFactory,
-    DeployedFactories,
+    DeployedFactory(u32),        // Indexed deployed-factory record
+    FactoryCount,
     Deploying,
     UsedSalts(BytesN<32>),
     DeploymentsInBlock(u32),
@@ -98,6 +99,13 @@ pub enum MasterFactoryError {
 
 #[contractimpl]
 impl MasterFactory {
+    /// Number of ledgers below which a deployed-factory record's TTL is
+    /// refreshed. Approximately 30 days at ~5s per ledger.
+    const RECORD_TTL_THRESHOLD: u32 = 518_400;
+    /// TTL (in ledgers) a deployed-factory record is extended to. Approximately
+    /// one year at ~5s per ledger.
+    const RECORD_TTL_EXTEND_TO: u32 = 6_307_200;
+
     /// Initialize MasterFactory with admin address
     ///
     /// # Arguments
@@ -105,9 +113,9 @@ impl MasterFactory {
     pub fn __constructor(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
-        // Initialize empty factories list
-        let factories: Vec<FactoryInfo> = Vec::new(&e);
-        e.storage().instance().set(&DataKey::DeployedFactories, &factories);
+        // Deployed factories are stored under indexed persistent keys; only the
+        // small counter lives in instance storage.
+        e.storage().instance().set(&DataKey::FactoryCount, &0u32);
         e.storage().instance().set(&DataKey::Deploying, &false);
         e.storage().instance().set(&DataKey::Paused, &false);
     }
@@ -195,12 +203,7 @@ impl MasterFactory {
             timestamp: e.ledger().timestamp(),
         };
 
-        let mut factories: Vec<FactoryInfo> = e.storage()
-            .instance()
-            .get(&DataKey::DeployedFactories)
-            .unwrap_or_else(|| Vec::new(&e));
-        factories.push_back(factory_info.clone());
-        e.storage().instance().set(&DataKey::DeployedFactories, &factories);
+        Self::append_factory(&e, factory_info);
 
         // Emit event
         FactoryDeployedEvent {
@@ -294,12 +297,7 @@ impl MasterFactory {
             timestamp: e.ledger().timestamp(),
         };
 
-        let mut factories: Vec<FactoryInfo> = e.storage()
-            .instance()
-            .get(&DataKey::DeployedFactories)
-            .unwrap_or_else(|| Vec::new(&e));
-        factories.push_back(factory_info.clone());
-        e.storage().instance().set(&DataKey::DeployedFactories, &factories);
+        Self::append_factory(&e, factory_info);
 
         // Emit event
         FactoryDeployedEvent {
@@ -393,12 +391,7 @@ impl MasterFactory {
             timestamp: e.ledger().timestamp(),
         };
 
-        let mut factories: Vec<FactoryInfo> = e.storage()
-            .instance()
-            .get(&DataKey::DeployedFactories)
-            .unwrap_or_else(|| Vec::new(&e));
-        factories.push_back(factory_info.clone());
-        e.storage().instance().set(&DataKey::DeployedFactories, &factories);
+        Self::append_factory(&e, factory_info);
 
         // Emit event
         FactoryDeployedEvent {
@@ -444,10 +437,51 @@ impl MasterFactory {
     /// # Returns
     /// Vector of FactoryInfo containing all deployed factories
     pub fn get_deployed_factories(e: Env) -> Vec<FactoryInfo> {
-        e.storage()
-            .instance()
-            .get(&DataKey::DeployedFactories)
-            .unwrap_or(Vec::new(&e))
+        let count: u32 = e.storage().instance().get(&DataKey::FactoryCount).unwrap_or(0);
+        let mut factories = Vec::new(&e);
+        for i in 0..count {
+            if let Some(factory) = e
+                .storage()
+                .persistent()
+                .get::<_, FactoryInfo>(&DataKey::DeployedFactory(i))
+            {
+                factories.push_back(factory);
+            }
+        }
+        factories
+    }
+
+    /// Get a page of deployed factories
+    ///
+    /// # Arguments
+    /// * `start` - Index of the first record to return
+    /// * `limit` - Maximum number of records to return
+    ///
+    /// # Returns
+    /// Vector of FactoryInfo for the requested page
+    pub fn get_deployed_factories_paginated(e: Env, start: u32, limit: u32) -> Vec<FactoryInfo> {
+        let count: u32 = e.storage().instance().get(&DataKey::FactoryCount).unwrap_or(0);
+        let mut factories = Vec::new(&e);
+        let mut i = start;
+        while i < count && factories.len() < limit {
+            if let Some(factory) = e
+                .storage()
+                .persistent()
+                .get::<_, FactoryInfo>(&DataKey::DeployedFactory(i))
+            {
+                factories.push_back(factory);
+            }
+            i += 1;
+        }
+        factories
+    }
+
+    /// Get total number of deployed factories
+    ///
+    /// # Returns
+    /// Total count of deployed factories
+    pub fn get_factory_count(e: Env) -> u32 {
+        e.storage().instance().get(&DataKey::FactoryCount).unwrap_or(0)
     }
 
     /// Get admin address
@@ -581,6 +615,25 @@ impl MasterFactory {
             admin: current_admin.clone(),
         }
         .publish(&e);
+    }
+
+    // Append a deployed factory under its own indexed persistent key, bumping
+    // the instance-level counter.
+    fn append_factory(e: &Env, info: FactoryInfo) {
+        let count: u32 = e.storage().instance().get(&DataKey::FactoryCount).unwrap_or(0);
+        let new_count = count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(e, MasterFactoryError::CounterOverflow));
+
+        let index_key = DataKey::DeployedFactory(count);
+        e.storage().persistent().set(&index_key, &info);
+        e.storage().persistent().extend_ttl(
+            &index_key,
+            Self::RECORD_TTL_THRESHOLD,
+            Self::RECORD_TTL_EXTEND_TO,
+        );
+
+        e.storage().instance().set(&DataKey::FactoryCount, &new_count);
     }
 
     // Helper function to check admin authorization
