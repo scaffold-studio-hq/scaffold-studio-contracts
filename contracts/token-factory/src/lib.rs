@@ -933,6 +933,52 @@ mod test {
     }
 
     #[test]
+    #[should_panic(expected = "Error(Contract, #5)")] // InvalidName: bell control byte
+    fn test_validation_name_with_bell_control_character() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager: admin,
+            initial_supply: 1_000_000,
+            cap: None,
+            name: String::from_bytes(&env, b"Test\\x07Name"),
+            symbol: String::from_str(&env, "TEST"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[31u8; 32]),
+            asset: None,
+            decimals_offset: None,
+        };
+
+        TokenFactory::validate_config(&env, &config);
+    }
+
+    #[test]
+    fn test_validation_name_with_tab_newline_and_carriage_return() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager: admin,
+            initial_supply: 1_000_000,
+            cap: None,
+            name: String::from_bytes(&env, b"Test\\nToken\\tName\\r"),
+            symbol: String::from_str(&env, "TST"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[32u8; 32]),
+            asset: None,
+            decimals_offset: None,
+        };
+
+        // These three whitespace controls are intentional exceptions to the
+        // 0x00-0x1f exclusion; the full config must pass, not merely the byte helper.
+        assert!(TokenFactory::validate_string_chars(&env, &config.name));
+        TokenFactory::validate_config(&env, &config);
+    }
+
+    #[test]
     #[should_panic(expected = "Error(Contract, #7)")] // InvalidDecimals
     fn test_validation_decimals_too_high() {
         let env = Env::default();
