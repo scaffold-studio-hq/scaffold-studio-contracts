@@ -16,6 +16,16 @@ fn create_client<'a>(
     let address = e.register(
         ExampleContract,
         (admin, manager, initial_supply, name, symbol, decimals),
+    let address = e.register(
+        ExampleContract,
+        (
+            admin,
+            manager,
+            initial_supply,
+            String::from_str(e, "Allowlist Token"),
+            String::from_str(e, "ALWL"),
+            7u32,
+        ),
     );
     ExampleContractClient::new(e, &address)
 }
@@ -157,4 +167,70 @@ fn allowlist_approve_override_works() {
     // Approve user2 to transfer from user1
     client.approve(&user1, &user2, &transfer_amount, &1000);
     assert_eq!(client.allowance(&user1, &user2), transfer_amount);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #113)")]
+fn cannot_transfer_from_after_disallowing_allowance_owner() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let manager = Address::generate(&e);
+    let user1 = Address::generate(&e);
+    let user2 = Address::generate(&e);
+    let initial_supply = 1_000_000;
+    let client = create_client(&e, &admin, &manager, &initial_supply);
+    let transfer_amount = 1000;
+
+    e.mock_all_auths();
+
+    // Allow the spender/recipient so the only allowlist rejection left is the
+    // disallowed `from` account.
+    client.allow_user(&user1, &manager);
+    client.allow_user(&user2, &manager);
+
+    // Grant an allowance before any disallow happens.
+    client.approve(&admin, &user1, &transfer_amount, &1000);
+    assert_eq!(client.allowance(&admin, &user1), transfer_amount);
+
+    // Disallow the account that owns the tokens the allowance authorizes
+    // moving. OZ's `AllowList::transfer_from` re-checks `from` and `to` on
+    // every call, so a pre-existing allowance must not survive the disallow.
+    client.disallow_user(&admin, &manager);
+    assert!(!client.allowed(&admin));
+
+    client.transfer_from(&user1, &admin, &user2, &transfer_amount);
+}
+
+#[test]
+fn disallowed_spender_can_still_use_allowance() {
+    // OpenZeppelin v0.5.1 explicitly exempts the spender from the allowlist
+    // ("Note that, spender does not have to be allowed."), so disallowing the
+    // spender is *not* a rejection path. This test pins that documented
+    // behaviour: the edge case is observed, but with the spender exemption in
+    // place rather than an assumed `UserNotAllowed` failure.
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let manager = Address::generate(&e);
+    let spender = Address::generate(&e);
+    let user2 = Address::generate(&e);
+    let initial_supply = 1_000_000;
+    let client = create_client(&e, &admin, &manager, &initial_supply);
+    let transfer_amount = 1000;
+
+    e.mock_all_auths();
+
+    // Allow the recipient only.
+    client.allow_user(&user2, &manager);
+    assert!(!client.allowed(&spender));
+
+    // The owner grants an allowance to a spender that is not allowed.
+    client.approve(&admin, &spender, &transfer_amount, &1000);
+    assert_eq!(client.allowance(&admin, &spender), transfer_amount);
+
+    // Disallowing the spender has no effect on the allowance.
+    client.disallow_user(&spender, &manager);
+    assert!(!client.allowed(&spender));
+
+    client.transfer_from(&spender, &admin, &user2, &transfer_amount);
+    assert_eq!(client.balance(&user2), transfer_amount);
 }
