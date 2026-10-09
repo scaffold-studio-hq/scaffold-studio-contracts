@@ -32,6 +32,7 @@ pub enum DataKey {
     Paused,                      // Emergency pause
     // Appended for upgrade-safe indexed records; existing key discriminants stay stable.
     DeployedToken(u32),
+    UsedSalts(BytesN<32>),       // Persistent reservation for deterministic deployments
 }
 
 #[contracttype]
@@ -301,6 +302,12 @@ impl TokenFactory {
             panic_with_error!(&e, TokenFactoryError::DuplicateSalt);
         }
 
+        // Reusing a deterministic salt would target an existing deployment.
+        let salt_key = DataKey::UsedSalts(config.salt.clone());
+        if e.storage().persistent().has(&salt_key) {
+            panic_with_error!(&e, TokenFactoryError::DuplicateSalt);
+        }
+
         // Get WASM hash based on token type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.token_type);
 
@@ -369,6 +376,7 @@ impl TokenFactory {
         };
 
         // Mark the salt as consumed now that the deployment succeeded
+        // Reserve this salt only after the deployment succeeds. Failed calls roll back.
         e.storage().persistent().set(&salt_key, &true);
 
         // Update state AFTER successful deployment
@@ -975,6 +983,21 @@ mod test {
         // "Line\nBreak" and "TS\tT" must pass validation and deploy.
         let name = String::from_bytes(&env, &[76, 105, 110, 101, 10, 66, 114, 101, 97, 107]);
         let symbol = String::from_bytes(&env, &[84, 83, 9, 84]);
+    #[test]
+    #[should_panic(expected = "Error(Contract, #19)")]
+    fn test_rejects_a_previously_used_deployment_salt() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin) = setup_factory(&env);
+        let salt = BytesN::from_array(&env, &[7u8; 32]);
+
+        // Mirror a previously successful deployment without needing WASM fixtures.
+        env.as_contract(&client.address, || {
+            env.storage()
+                .persistent()
+                .set(&DataKey::UsedSalts(salt.clone()), &true);
+        });
+
         let config = TokenConfig {
             token_type: TokenType::Allowlist,
             admin: admin.clone(),
@@ -996,6 +1019,12 @@ mod test {
             symbol: String::from_str(&env, "TEST"),
             decimals: 7,
             salt: BytesN::from_array(&env, &[51u8; 32]),
+            initial_supply: 100,
+            cap: None,
+            name: String::from_str(&env, "Example"),
+            symbol: String::from_str(&env, "EX"),
+            decimals: 7,
+            salt,
             asset: None,
             decimals_offset: None,
         };
@@ -1073,6 +1102,9 @@ mod test {
         );
     }
 
+
+        client.deploy_token(&admin, &config);
+    }
 
     // ===== Constructor Tests =====
 
