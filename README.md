@@ -8,7 +8,7 @@
 
 Production-ready Soroban blueprints powering our conversational factory system for tokens, NFTs, and governance on Stellar.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Stellar](https://img.shields.io/badge/Stellar-Soroban-7D00FF)](https://stellar.org)
 [![Rust](https://img.shields.io/badge/Rust-1.89+-000000)](https://www.rust-lang.org/)
 
@@ -821,7 +821,7 @@ Contributions welcome! Please follow these guidelines:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Licensed under the Apache License, Version 2.0 - see [LICENSE](LICENSE) file for details.
 
 ---
 
