@@ -53,7 +53,11 @@ impl ExampleContract {
         // When `ownable` module is available,
         // the following checks should be equivalent to:
         // `ownable::only_owner(&e);`
-        let owner: Address = e.storage().instance().get(&OWNER).expect("owner should be set");
+        let owner: Address = e
+            .storage()
+            .instance()
+            .get(&OWNER)
+            .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::Unauthorized));
         owner.require_auth();
 
         Base::mint(e, &account, amount);
@@ -71,7 +75,11 @@ impl Pausable for ExampleContract {
         // the following checks should be equivalent to:
         // `ownable::only_owner(&e);`
         caller.require_auth();
-        let owner: Address = e.storage().instance().get(&OWNER).expect("owner should be set");
+        let owner: Address = e
+            .storage()
+            .instance()
+            .get(&OWNER)
+            .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::Unauthorized));
         if owner != caller {
             panic_with_error!(e, ExampleContractError::Unauthorized);
         }
@@ -84,7 +92,11 @@ impl Pausable for ExampleContract {
         // the following checks should be equivalent to:
         // `ownable::only_owner(&e);`
         caller.require_auth();
-        let owner: Address = e.storage().instance().get(&OWNER).expect("owner should be set");
+        let owner: Address = e
+            .storage()
+            .instance()
+            .get(&OWNER)
+            .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::Unauthorized));
         if owner != caller {
             panic_with_error!(e, ExampleContractError::Unauthorized);
         }
