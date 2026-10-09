@@ -82,6 +82,8 @@ impl MerkleVoting {
         if vote_data.voting_power <= 0 {
             panic_with_error!(e, MerkleVotingError::InvalidVotingPower);
         }
+        // A valid Merkle proof establishes eligibility, not authorization to cast the vote.
+        vote_data.account.require_auth();
 
         // Verify merkle proof using the MerkleDistributor
         Distributor::verify_and_set_claimed(e, vote_data.clone(), proof);
