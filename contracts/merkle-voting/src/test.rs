@@ -102,6 +102,12 @@ fn test_vote_requires_voter_auth() {
     let impostor = Address::generate(&e);
 
     let vote = VoteData { index: 0, account: voter.clone(), voting_power: 100 };
+#[should_panic(expected = "Error(Contract, #1)")]
+fn vote_rejects_zero_voting_power() {
+    let e = Env::default();
+    let voter = Address::generate(&e);
+
+    let vote = VoteData { index: 0, account: voter, voting_power: 0 };
     let leaf = hash_vote(&e, &vote);
     let root = leaf.clone();
 
@@ -137,6 +143,8 @@ fn test_vote_rejects_zero_voting_power() {
 
     let proof = Vec::<BytesN<32>>::new(&e);
     client.vote(&vote, &proof, &true);
+    // The guard runs before proof verification, so the proof content is moot.
+    client.vote(&vote, &Vec::new(&e), &true);
 }
 
 #[test]
@@ -211,4 +219,16 @@ fn test_vote_rejects_missing_voter_authorization() {
 
     // A valid voter/proof cannot be used without that voter's signature.
     client.vote(&vote, &Vec::new(&e), &true);
+fn vote_rejects_negative_voting_power() {
+    let e = Env::default();
+    let voter = Address::generate(&e);
+
+    let vote = VoteData { index: 0, account: voter, voting_power: -50 };
+    let leaf = hash_vote(&e, &vote);
+    let root = leaf.clone();
+
+    let contract_id = e.register(MerkleVoting, (root,));
+    let client = MerkleVotingClient::new(&e, &contract_id);
+
+    client.vote(&vote, &Vec::new(&e), &false);
 }
