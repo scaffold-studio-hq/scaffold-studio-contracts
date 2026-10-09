@@ -7,11 +7,18 @@
 //! **IMPORTANT**: this example is for demonstration purposes, and authorization
 //! is not taken into consideration
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Symbol};
 use stellar_tokens::fungible::{
     capped::{check_cap, set_cap},
     Base, FungibleToken,
 };
+
+/// Instance-storage key under which the contract owner (the constructor
+/// `admin`) is persisted.
+pub const OWNER: Symbol = symbol_short!("OWNER");
+
+/// Instance-storage key under which the contract manager is persisted.
+pub const MANAGER: Symbol = symbol_short!("MANAGER");
 
 #[contract]
 pub struct ExampleContract;
@@ -31,11 +38,24 @@ impl ExampleContract {
         Base::set_metadata(e, decimals, name, symbol);
         set_cap(e, cap);
 
+        // Persist the admin as the contract owner so that future privileged
+        // operations (e.g. `mint`) have a principal to authorize against.
+        e.storage().instance().set(&OWNER, &admin);
+        // Persist the manager as a separate role instead of discarding it.
+        e.storage().instance().set(&MANAGER, &manager);
+
         // Mint initial supply to admin
         Base::mint(e, &admin, initial_supply);
+    }
 
-        // Note: manager parameter included for consistency with other token types
-        let _ = manager; // Silence unused warning
+    /// Returns the stored contract owner (the constructor `admin`).
+    pub fn get_owner(e: &Env) -> Address {
+        e.storage().instance().get(&OWNER).expect("owner should be set")
+    }
+
+    /// Returns the stored contract manager (the constructor `manager`).
+    pub fn get_manager(e: &Env) -> Address {
+        e.storage().instance().get(&MANAGER).expect("manager should be set")
     }
 
     pub fn mint(e: &Env, account: Address, amount: i128) {
