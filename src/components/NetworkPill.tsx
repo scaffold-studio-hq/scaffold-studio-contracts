@@ -38,11 +38,17 @@ const NetworkPill: React.FC = () => {
   // Include the mismatch message in the accessible name so assistive
   // technology announces it, not just the network name.
   const ariaLabel = `${appNetwork} network. ${statusDescription}`;
+  const accessibleStatus = !address
+    ? `App network: ${appNetwork}. Connect your wallet using this network.`
+    : isNetworkMismatch
+      ? `Network mismatch: wallet is on ${walletNetwork}; connect to ${appNetwork} instead.`
+      : `Wallet network matches the app network: ${appNetwork}.`;
 
   return (
     <div
       role="status"
       aria-label={ariaLabel}
+      aria-label={accessibleStatus}
       style={{
         backgroundColor: bgColor,
         color: textColor,
@@ -57,7 +63,9 @@ const NetworkPill: React.FC = () => {
       }}
       title={title}
     >
-      <Icon.Circle color={color} />
+      <span aria-hidden="true">
+        <Icon.Circle color={color} />
+      </span>
       {appNetwork}
     </div>
   );
