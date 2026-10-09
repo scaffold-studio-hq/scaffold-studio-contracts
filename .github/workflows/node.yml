@@ -126,6 +126,24 @@ jobs:
       with:
         node-version: 22
         cache: npm
+    - name: Check Rust formatting
+      run: cargo fmt --all --check
+    - uses: actions/cache@v3
+      with:
+        path: '~/.cargo/bin/
+
+          runner/.cargo/bin/
+
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
   integration-tests:
     runs-on: ubuntu-latest
     steps:
