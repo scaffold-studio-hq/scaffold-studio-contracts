@@ -611,6 +611,7 @@ RPC: http://localhost:8000/rpc
 Passphrase: Standalone Network ; February 2017
 
 # Start network (the network passphrase remains "Standalone Network ; February 2017")
+# Start network
 stellar network start local
 
 # Deploy
