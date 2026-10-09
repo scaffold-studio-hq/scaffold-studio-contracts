@@ -116,3 +116,34 @@ jobs:
       run: cargo build --release --target wasm32v1-none --workspace
     - name: Run ignored integration tests
       run: cargo test --test integration_tests -- --ignored --test-threads=1
+  wasm-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/cache@v3
+      with:
+        path: '~/.cargo/bin/
+
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+    - run: rustup target add wasm32v1-none
+    - name: Build workspace WASM
+      run: cargo build --release --target wasm32v1-none --workspace
+    - name: Verify expected WASM artifacts exist
+      run: "set -euo pipefail\n# Filenames referenced by setup-local.sh and setup-testnet.sh\n\
+        expected=(\n  fungible_allowlist_example\n  fungible_blocklist_example\n \
+        \ fungible_capped_example\n  fungible_pausable_example\n  fungible_vault_example\n\
+        \  nft_enumerable_example\n  nft_royalties_example\n  nft_access_control_example\n\
+        \  merkle_voting_example\n)\nmissing=0\nfor name in \"${expected[@]}\"; do\n\
+        \  wasm=\"target/wasm32v1-none/release/${name}.wasm\"\n  if [ ! -f \"$wasm\"\
+        \ ]; then\n    echo \"::error::Expected WASM artifact was not produced: $wasm\"\
+        \n    missing=1\n  else\n    echo \"Found $wasm\"\n  fi\ndone\nif [ \"$missing\"\
+        \ -ne 0 ]; then\n  exit 1\nfi\n"
