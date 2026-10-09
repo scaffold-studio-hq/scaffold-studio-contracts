@@ -146,14 +146,22 @@ stellar contract invoke \
 
 ### Deploy a Token (Example)
 
+`TokenConfig` (defined in `contracts/token-factory/src/lib.rs`) requires all of
+`token_type`, `admin`, `manager`, `initial_supply`, `cap`, `name`, `symbol`, `decimals`,
+`salt`, `asset` and `decimals_offset`. `token_type` is a `#[contracttype]` enum, so the CLI
+expects the tagged representation (`{"tag":"Allowlist"}`) instead of a bare string. Set
+`asset` and `decimals_offset` to `null` for every type except `Vault` (for a Vault token,
+set `asset` to the underlying token contract address and `decimals_offset` to an integer).
+
 ```bash
-# Deploy an Allowlist token
+# Deploy an Allowlist token. Replace <admin-address>/<manager-address> with Stellar
+# account IDs and the salt with 32 random bytes (64 hex characters).
 stellar contract invoke \
   --id token_factory \
   -- \
   deploy_token \
   --deployer me \
-  --config '{"token_type":"Allowlist","admin":"<address>","manager":"<address>","initial_supply":"1000000","cap":null,"salt":"<32-byte-salt>"}'
+  --config '{"token_type":{"tag":"Allowlist"},"admin":"<admin-address>","manager":"<manager-address>","initial_supply":"1000000","cap":null,"name":"My Token","symbol":"MTK","decimals":7,"salt":"0000000000000000000000000000000000000000000000000000000000000000","asset":null,"decimals_offset":null}'
 ```
 
 ---
