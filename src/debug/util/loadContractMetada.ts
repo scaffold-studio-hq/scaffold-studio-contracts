@@ -5,6 +5,12 @@ import { Server } from "@stellar/stellar-sdk/rpc";
 import { network } from "../../contracts/util";
 import { Contract } from "@stellar/stellar-sdk";
 import { getWasmContractData } from "./getWasmContractData";
+import {
+  CONTRACT_SECTIONS,
+  ContractData,
+  ContractSectionName,
+} from "../types/types";
+import { getWasmContractData as decodeWasmContractData } from "./getWasmContractData";
 
 export interface ContractMetadata {
   contractmetav0?: { [key: string]: string };
@@ -78,6 +84,46 @@ const loadWasmBinary = async (wasmHash: string) => {
     return await server.getContractWasmByHash(wasmHash, "hex");
   } catch (error) {
     console.error(`Failed to load contract metadata for ${wasmHash}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Present decoded section entries in the metadata shape consumed by the Debugger.
+ * The WASM/XDR decoding itself is shared with getWasmContractData.ts.
+ */
+export const getWasmContractData = async (wasmBytes: Buffer) => {
+  try {
+    const decodedSections = await decodeWasmContractData(wasmBytes);
+    if (!decodedSections) return null;
+
+    const result: Record<ContractSectionName, ContractData> = {
+      contractmetav0: {},
+      contractenvmetav0: {},
+      contractspecv0: {},
+    };
+
+    for (const sectionName of CONTRACT_SECTIONS) {
+      for (const json of decodedSections[sectionName].json ?? []) {
+        const sectionDataJson = JSON.parse(json) as Record<string, unknown>;
+        const sectionContent: Record<string, unknown> = {};
+
+        for (const entry of Object.values(sectionDataJson)) {
+          if (!entry || typeof entry !== "object") continue;
+          const values = entry as Record<string, unknown>;
+          if (values.key) {
+            sectionContent[String(values.key)] = values.val;
+          } else {
+            Object.assign(sectionContent, values);
+          }
+        }
+
+        result[sectionName] = { ...result[sectionName], ...sectionContent };
+      }
+    }
+    return result;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (e) {
     return null;
   }
 };
