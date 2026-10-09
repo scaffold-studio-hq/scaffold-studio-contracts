@@ -39,11 +39,27 @@ const Home: React.FC = () => (
         As an example, here's the <Code size="md">GuessTheNumber</Code>{" "}
         component. Make changes to the contract and the component and see how
         things change!
+        Interact with contracts from the frontend
       </Text>
-      <Text as="h2" size="lg">
-        &lt;GuessTheNumber /&gt;
+      <Text as="p" size="md">
+        Scaffold stellar automatically builds, deploys, and generates frontend
+        packages (sometimes called "TypeScript bindings") for each of your
+        contracts. You can adjust how it does this in the{" "}
+        <Code size="md">environments.toml</Code> file. Import these frontend
+        packages like this:
       </Text>
-      <GuessTheNumber />
+      <pre>
+        <Code size="md">import nft_factory from "./contracts/nft_factory";</Code>
+      </pre>
+      <Text as="p" size="md">
+        If your contract emits events, check out the{" "}
+        <Code size="md">useSubscription</Code> hook in the{" "}
+        <Code size="md">hooks/</Code> folder to listen to them.
+      </Text>
+      <Text as="p" size="md">
+        Each generated client exposes the contract's methods with full
+        TypeScript types, so you can call them directly from your components.
+      </Text>
       <Text as="h2" size="lg">
         Interact with wallets
       </Text>
