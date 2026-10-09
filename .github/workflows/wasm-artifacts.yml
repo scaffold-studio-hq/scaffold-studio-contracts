@@ -1,63 +1,45 @@
 name: Verify production WASM artifacts
-
 on:
   pull_request:
     paths:
-      - "contracts/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "setup-local.sh"
-      - "setup-testnet.sh"
-      - ".github/workflows/wasm-artifacts.yml"
+    - contracts/**
+    - Cargo.toml
+    - Cargo.lock
+    - setup-local.sh
+    - setup-testnet.sh
+    - .github/workflows/wasm-artifacts.yml
   push:
-    branches: ["main"]
+    branches:
+    - main
     paths:
-      - "contracts/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "setup-local.sh"
-      - "setup-testnet.sh"
-      - ".github/workflows/wasm-artifacts.yml"
-
+    - contracts/**
+    - Cargo.toml
+    - Cargo.lock
+    - setup-local.sh
+    - setup-testnet.sh
+    - .github/workflows/wasm-artifacts.yml
 permissions:
   contents: read
-
 jobs:
   verify-wasm-artifacts:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Install the production Soroban WASM target
-        run: rustup target add wasm32v1-none
-      - name: Build contract WASM artifacts from the locked workspace
-        run: cargo build --workspace --release --locked --target wasm32v1-none
-      - name: Verify every WASM used by the deployment scripts
-        shell: bash
-        run: |
-          set -euo pipefail
-          declare -A expected=()
-          for script in setup-local.sh setup-testnet.sh; do
-            while IFS= read -r line || [[ -n "$line" ]]; do
-              [[ "$line" =~ ^[[:space:]]*# ]] && continue
-              if [[ "$line" =~ target/wasm32v1-none/release/([[:alnum:]_-]+\.wasm) ]]; then
-                expected["${BASH_REMATCH[1]}"]=1
-              fi
-            done < "$script"
-          done
-          if (( ${#expected[@]} == 0 )); then
-            echo "::error::No active WASM deployment references found"
-            exit 1
-          fi
-          failures=0
-          for filename in "${!expected[@]}"; do
-            path="target/wasm32v1-none/release/$filename"
-            if [[ ! -s "$path" ]]; then
-              echo "::error::Missing or empty expected WASM: $path"
-              failures=1
-            else
-              echo "Verified: $path"
-            fi
-          done
-          exit "$failures"
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Install the production Soroban WASM target
+      run: rustup target add wasm32v1-none
+    - name: Build contract WASM artifacts from the locked workspace
+      run: cargo build --workspace --release --locked --target wasm32v1-none
+    - name: Verify every WASM used by the deployment scripts
+      shell: bash
+      run: "set -euo pipefail\ndeclare -A expected=()\nfor script in setup-local.sh\
+        \ setup-testnet.sh; do\n  while IFS= read -r line || [[ -n \"$line\" ]]; do\n\
+        \    [[ \"$line\" =~ ^[[:space:]]*# ]] && continue\n    if [[ \"$line\" =~\
+        \ target/wasm32v1-none/release/([[:alnum:]_-]+\\.wasm) ]]; then\n      expected[\"\
+        ${BASH_REMATCH[1]}\"]=1\n    fi\n  done < \"$script\"\ndone\nif (( ${#expected[@]}\
+        \ == 0 )); then\n  echo \"::error::No active WASM deployment references found\"\
+        \n  exit 1\nfi\nfailures=0\nfor filename in \"${!expected[@]}\"; do\n  path=\"\
+        target/wasm32v1-none/release/$filename\"\n  if [[ ! -s \"$path\" ]]; then\n\
+        \    echo \"::error::Missing or empty expected WASM: $path\"\n    failures=1\n\
+        \  else\n    echo \"Verified: $path\"\n  fi\ndone\nexit \"$failures\"\n"

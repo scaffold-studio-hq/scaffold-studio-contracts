@@ -1,52 +1,47 @@
 name: Audit production dependencies
-
 on:
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "contracts/**/Cargo.toml"
-      - "package.json"
-      - "package-lock.json"
-      - "packages/**/package.json"
-      - ".github/workflows/dependency-audit.yml"
+    - Cargo.toml
+    - Cargo.lock
+    - contracts/**/Cargo.toml
+    - package.json
+    - package-lock.json
+    - packages/**/package.json
+    - .github/workflows/dependency-audit.yml
   push:
-    branches: ["main"]
+    branches:
+    - main
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "contracts/**/Cargo.toml"
-      - "package.json"
-      - "package-lock.json"
-      - "packages/**/package.json"
-      - ".github/workflows/dependency-audit.yml"
-
+    - Cargo.toml
+    - Cargo.lock
+    - contracts/**/Cargo.toml
+    - package.json
+    - package-lock.json
+    - packages/**/package.json
+    - .github/workflows/dependency-audit.yml
 permissions:
   contents: read
-
 jobs:
   npm-advisories:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Use Node 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-      - name: Fail on high or critical production npm advisories
-        run: npm audit --omit=dev --audit-level=high
-
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Use Node 22
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      with:
+        node-version: 22
+    - name: Fail on high or critical production npm advisories
+      run: npm audit --omit=dev --audit-level=high
   rustsec-advisories:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Install pinned RustSec cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Fail on RustSec advisories affecting Cargo.lock
-        # No advisories are silently ignored. Any necessary exception must
-        # name the RUSTSEC ID, rationale, owner and expiration in a reviewed PR.
-        run: cargo audit
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Install pinned RustSec cargo-audit
+      run: cargo install cargo-audit --version 0.22.2 --locked
+    - name: Fail on RustSec advisories affecting Cargo.lock
+      run: cargo audit
