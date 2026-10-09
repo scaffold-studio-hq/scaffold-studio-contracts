@@ -35,6 +35,7 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const [isPending, startTransition] = useTransition();
   const popupLock = useRef(false);
   const errorNotified = useRef(false);
+  const lastErrorNoticeAt = useRef(0);
   const { addNotification } = useNotification();
   const signTransaction = wallet.signTransaction.bind(wallet);
 
@@ -110,8 +111,8 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
           storage.setItem("walletAddress", a.address);
           updateState({ ...a, ...n });
         }
-      } catch (e) {
-        // If `getNetwork` or `getAddress` throw errors... sign the user out???
+      } catch {
+        // Keep sign-out non-fatal and do not expose wallet or network errors in logs.
         nullify();
         // Surface the error instead of throwing so the app keeps running, but
         // only once per failure burst so the polling loop cannot spam the user.
@@ -123,6 +124,10 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
               : "Wallet connection error. Please check your wallet extension.",
             "error",
           );
+        const now = Date.now();
+        if (now - lastErrorNoticeAt.current >= 15_000) {
+          lastErrorNoticeAt.current = now;
+          addNotification("Wallet connection failed. Please reconnect.", "error");
         }
       } finally {
         popupLock.current = false;

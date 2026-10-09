@@ -45,6 +45,7 @@ export const useWalletBalance = () => {
       });
     } catch (err) {
       if (err instanceof Error && err.message.match(/not found/i)) {
+        addNotification("Could not find this wallet balance. Is your wallet funded?", "error");
         setState({
           isLoading: false,
           balances: [],
@@ -54,6 +55,7 @@ export const useWalletBalance = () => {
         });
       } else {
         addNotification("Unknown error fetching balance.", "error");
+        addNotification("Unable to fetch wallet balance. Please try again.", "error");
         setState({
           isLoading: false,
           balances: [],
