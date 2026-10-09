@@ -22,6 +22,10 @@ fn create_client<'a>(e: &Env, admin: &Address, manager: &Address) -> ExampleCont
         String::from_str(e, "Royalty NFT"),
         String::from_str(e, "ROY"),
     ));
+    let base_uri = String::from_str(e, "https://example.com/nft/");
+    let name = String::from_str(e, "My Token");
+    let symbol = String::from_str(e, "TKN");
+    let address = e.register(ExampleContract, (admin, manager, base_uri, name, symbol));
     ExampleContractClient::new(e, &address)
 }
 
