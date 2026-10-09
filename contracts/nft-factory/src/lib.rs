@@ -909,4 +909,73 @@ mod test {
         client.accept_admin_transfer(&admin3);
         assert_eq!(client.get_admin(), admin3);
     }
+
+    // ===== Pause / Unpause Tests =====
+
+    /// While the factory is paused, `deploy_nft` is rejected before any
+    /// deployment work happens, bubbling up `NFTFactoryError::ContractPaused`
+    /// (`Contract, #8`).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #8)")]
+    fn test_pause_blocks_deploy_nft() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin, _wasm) = setup_with_wasm(&env);
+        client.pause(&admin);
+
+        let deployer = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[7u8; 32]);
+        let config = NFTConfig {
+            nft_type: NFTType::Enumerable,
+            owner,
+            admin: None,
+            manager: None,
+            salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
+        };
+
+        client.deploy_nft(&deployer, &config);
+    }
+
+    /// After `unpause`, the pause gate is lifted: `deploy_nft` now gets past
+    /// the `Paused` check and fails further down at the (unconfigured) WASM
+    /// lookup, `NFTFactoryError::WasmNotSet` (`Contract, #2`).
+    ///
+    /// NOTE: a genuine *successful* deployment cannot be asserted here with a
+    /// plain `cargo test`: `deploy_v2` requires an uploaded contract WASM,
+    /// which unit tests can only obtain from a compiled `.wasm` artifact
+    /// (via `contractimport!`) that this workspace does not build. Reaching
+    /// `WasmNotSet` proves the `ContractPaused` branch was skipped.
+    #[test]
+    #[should_panic(expected = "Error(Contract, #2)")]
+    fn test_unpause_allows_deploy_nft_to_proceed() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Deliberately no WASM configured, so the only gate left to observe is
+        // the pause flag itself.
+        let (client, admin) = setup_nft_factory(&env);
+        client.pause(&admin);
+        client.unpause(&admin);
+
+        let deployer = Address::generate(&env);
+        let owner = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[8u8; 32]);
+        let config = NFTConfig {
+            nft_type: NFTType::Enumerable,
+            owner,
+            admin: None,
+            manager: None,
+            salt,
+            name: None,
+            symbol: None,
+            base_uri: None,
+        };
+
+        client.deploy_nft(&deployer, &config);
+    }
 }
