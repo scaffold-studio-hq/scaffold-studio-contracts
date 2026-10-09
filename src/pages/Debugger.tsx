@@ -36,9 +36,24 @@ const Debugger: React.FC = () => {
     setSelectedContract(contractKeys[0]);
     if (!contractName) {
       navigate(`/debug/${contractKeys[0]}`, { replace: true });
+    if (isLoading || contractKeys.length === 0) return;
+
+    const nextContract =
+      contractName && contractKeys.includes(contractName)
+        ? contractName
+        : contractKeys[0];
+
+    // Keep the selected contract in sync with the route without redundant updates.
+    setSelectedContract((current) =>
+      current === nextContract ? current : nextContract,
+    );
+
+    // Only canonicalize the URL when the route has no contract parameter.
+    if (!contractName) {
+      navigate(`/debug/${nextContract}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractName, isLoading, contractKeys.join(",")]);
+  }, [contractName, isLoading, contractKeys.join(","), navigate]);
 
   if (isLoading) {
     return (
@@ -140,6 +155,7 @@ const Debugger: React.FC = () => {
         <>
           <Layout.Inset>
             <div style={{ marginTop: "2rem" }}>
+            <div style={{ marginTop: "0" }}>
               <div style={{ display: "flex", flexFlow: "column", gap: "1rem" }}>
                 {/* Contract detail card */}
                 <div
