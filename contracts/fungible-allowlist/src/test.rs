@@ -27,6 +27,9 @@ fn create_client<'a>(
             7u32,
         ),
     );
+    let name = String::from_str(e, "My Token");
+    let symbol = String::from_str(e, "TKN");
+    let address = e.register(ExampleContract, (admin, manager, initial_supply, name, symbol, 7u32));
     ExampleContractClient::new(e, &address)
 }
 
