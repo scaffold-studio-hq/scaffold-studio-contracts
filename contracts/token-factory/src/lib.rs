@@ -30,6 +30,8 @@ pub enum DataKey {
     Paused, // Emergency pause
     UsedSalts(BytesN<32>),       // Salts consumed by successful deployments
     Paused,                      // Emergency pause
+    // Appended for upgrade-safe indexed records; existing key discriminants stay stable.
+    DeployedToken(u32),
 }
 
 #[contracttype]
@@ -161,6 +163,8 @@ impl TokenFactory {
             .set(&DataKey::DeployedTokens, &tokens);
         // Deployed tokens are stored under indexed persistent keys; only the
         // small counter lives in instance storage.
+        // A count and individually addressable persistent records replace the
+        // instance Vec; the old DeployedTokens key remains readable on upgrade.
         e.storage().instance().set(&DataKey::TokenCount, &0u32);
         factory_common::set_paused(&e, false);
     }
@@ -387,15 +391,8 @@ impl TokenFactory {
             name: Some(config.name.clone()),
         };
 
-        let mut tokens: Vec<TokenInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedTokens)
-            .unwrap_or_else(|| Vec::new(&e));
-        tokens.push_back(token_info);
-        e.storage()
-            .instance()
-            .set(&DataKey::DeployedTokens, &tokens);
+        // One per-deployment write; never reserialize the growing legacy Vec.
+        e.storage().persistent().set(&DataKey::DeployedToken(count), &token_info);
 
         // Update token count
         e.storage().instance().set(&DataKey::TokenCount, &new_count);
@@ -470,6 +467,31 @@ impl TokenFactory {
             i += 1;
         }
         tokens
+        let count = Self::get_token_count(e.clone());
+        Self::deployed_tokens_range(&e, 0, count)
+    }
+
+    /// Read a bounded page without rewriting or loading other indexed records.
+    /// The historical all-records getter remains for existing callers.
+    pub fn get_deployed_tokens_page(e: Env, start: u32, limit: u32) -> Vec<TokenInfo> {
+        let count = Self::get_token_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_tokens_range(&e, start, end)
+    }
+
+    fn deployed_tokens_range(e: &Env, start: u32, end: u32) -> Vec<TokenInfo> {
+        let mut result = Vec::new(e);
+        // On an upgraded contract, the old vector is a read-only fallback.
+        let legacy: Vec<TokenInfo> = e.storage().instance()
+            .get(&DataKey::DeployedTokens).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<TokenInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedToken(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get tokens by type
@@ -481,6 +503,8 @@ impl TokenFactory {
     /// Vector of TokenInfo for the specified type
     pub fn get_tokens_by_type(e: Env, token_type: TokenType) -> Vec<TokenInfo> {
         let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
+        let all_tokens = Self::get_deployed_tokens(e.clone());
+
         let mut filtered = Vec::new(&e);
         for i in 0..count {
             if let Some(token) = e
@@ -505,6 +529,8 @@ impl TokenFactory {
     /// Vector of TokenInfo for tokens managed by the admin
     pub fn get_tokens_by_admin(e: Env, admin: Address) -> Vec<TokenInfo> {
         let count: u32 = e.storage().instance().get(&DataKey::TokenCount).unwrap_or(0);
+        let all_tokens = Self::get_deployed_tokens(e.clone());
+
         let mut filtered = Vec::new(&e);
         for i in 0..count {
             if let Some(token) = e
@@ -1485,6 +1511,36 @@ mod test {
     }
 
     // ===== Query Tests =====
+
+    // Focused upgrade-path regression: a historic Vec and a newly indexed
+    // record must be visible in order without appending to the historic Vec.
+    #[test]
+    fn test_indexed_deployment_page_and_legacy_fallback() {
+        let env = Env::default();
+        let (client, admin) = setup_factory(&env);
+        let historic = TokenInfo {
+            address: Address::generate(&env), token_type: TokenType::Allowlist,
+            admin: admin.clone(), timestamp: 1, name: None,
+        };
+        let indexed = TokenInfo {
+            address: Address::generate(&env), token_type: TokenType::Capped,
+            admin, timestamp: 2, name: None,
+        };
+        env.as_contract(&client.address, || {
+            let mut records = Vec::new(&env);
+            records.push_back(historic.clone());
+            env.storage().instance().set(&DataKey::DeployedTokens, &records);
+            env.storage().instance().set(&DataKey::TokenCount, &2u32);
+            env.storage().persistent().set(&DataKey::DeployedToken(1), &indexed);
+        });
+        let full = client.get_deployed_tokens();
+        assert_eq!(full.len(), 2);
+        assert_eq!(full.get(0), Some(historic.clone()));
+        assert_eq!(full.get(1), Some(indexed.clone()));
+        assert_eq!(client.get_deployed_tokens_page(&0, &1).get(0), Some(historic));
+        assert_eq!(client.get_deployed_tokens_page(&1, &999).get(0), Some(indexed));
+        assert_eq!(client.get_deployed_tokens_page(&2, &10).len(), 0);
+    }
 
     #[test]
     fn test_get_deployed_tokens_empty() {

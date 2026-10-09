@@ -21,6 +21,10 @@ pub enum DataKey {
     Deploying,
     UsedSalts(BytesN<32>),
     DeploymentsInBlock(u32),
+    Paused,
+    // Append only: keep existing Soroban storage-key discriminants stable.
+    FactoryCount,
+    DeployedFactory(u32),
 }
 
 #[contracttype]
@@ -124,6 +128,8 @@ impl MasterFactory {
 
         // Deployed factories are stored under indexed persistent keys; only the
         // small counter lives in instance storage.
+        // New deployments use individually addressable persistent entries.
+        // Legacy DeployedFactories remains available as read-only fallback.
         e.storage().instance().set(&DataKey::FactoryCount, &0u32);
         e.storage().instance().set(&DataKey::Deploying, &false);
         factory_common::set_paused(&e, false);
@@ -218,6 +224,12 @@ impl MasterFactory {
         };
 
         Self::append_factory(&e, factory_info);
+        // Stable append index, no whole-vector rewrite on deployment.
+        let count = Self::get_factory_count(e.clone());
+        let next_count = count.checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, MasterFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedFactory(count), &factory_info);
+        e.storage().instance().set(&DataKey::FactoryCount, &next_count);
 
         // Emit event
         FactoryDeployedEvent {
@@ -317,6 +329,12 @@ impl MasterFactory {
         };
 
         Self::append_factory(&e, factory_info);
+        // Stable append index, no whole-vector rewrite on deployment.
+        let count = Self::get_factory_count(e.clone());
+        let next_count = count.checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, MasterFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedFactory(count), &factory_info);
+        e.storage().instance().set(&DataKey::FactoryCount, &next_count);
 
         // Emit event
         FactoryDeployedEvent {
@@ -416,6 +434,12 @@ impl MasterFactory {
         };
 
         Self::append_factory(&e, factory_info);
+        // Stable append index, no whole-vector rewrite on deployment.
+        let count = Self::get_factory_count(e.clone());
+        let next_count = count.checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, MasterFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedFactory(count), &factory_info);
+        e.storage().instance().set(&DataKey::FactoryCount, &next_count);
 
         // Emit event
         FactoryDeployedEvent {
@@ -534,6 +558,39 @@ impl MasterFactory {
         .publish(&e);
 
         e.deployer().update_current_contract_wasm(new_wasm_hash);
+        let count = Self::get_factory_count(e.clone());
+        Self::deployed_factories_range(&e, 0, count)
+    }
+
+    /// Count of indexed factories (or pre-upgrade historical entries).
+    pub fn get_factory_count(e: Env) -> u32 {
+        e.storage().instance().get(&DataKey::FactoryCount)
+            .unwrap_or_else(|| {
+                let legacy: Vec<FactoryInfo> = e.storage().instance()
+                    .get(&DataKey::DeployedFactories).unwrap_or_else(|| Vec::new(&e));
+                legacy.len()
+            })
+    }
+
+    /// Bounded historical and indexed factory records (up to 100 per page).
+    pub fn get_deployed_factories_page(e: Env, start: u32, limit: u32) -> Vec<FactoryInfo> {
+        let count = Self::get_factory_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_factories_range(&e, start, end)
+    }
+
+    fn deployed_factories_range(e: &Env, start: u32, end: u32) -> Vec<FactoryInfo> {
+        let mut result = Vec::new(e);
+        let legacy: Vec<FactoryInfo> = e.storage().instance()
+            .get(&DataKey::DeployedFactories).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<FactoryInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedFactory(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get admin address

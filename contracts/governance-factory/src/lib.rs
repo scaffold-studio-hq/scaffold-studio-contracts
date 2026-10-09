@@ -35,6 +35,9 @@ pub enum DataKey {
     MultisigWasm,
     DeployedGovernanceEntry(u32), // Indexed deployed-governance record
     GovernanceCount,
+    Paused,                    // Emergency pause
+    // Appended without shifting existing on-ledger variant discriminants.
+    DeployedGovernanceEntry(u32),
 }
 
 #[contracttype]
@@ -136,6 +139,8 @@ impl GovernanceFactory {
 
         // Deployed governance contracts are stored under indexed persistent
         // keys; only the small counter lives in instance storage.
+        // The legacy deployed Vec is read-only on upgrade; fresh records use
+        // individually addressed persistent entries.
         e.storage().instance().set(&DataKey::GovernanceCount, &0u32);
 
         // Initialize paused flag
@@ -248,6 +253,13 @@ impl GovernanceFactory {
         e.storage()
             .instance()
             .set(&DataKey::GovernanceCount, &new_count);
+        // Count is the new stable index and remains a small instance entry.
+        let count: u32 = e.storage().instance()
+            .get(&DataKey::GovernanceCount).unwrap_or(0);
+        let new_count = count.checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, GovernanceFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedGovernanceEntry(count), &governance_info);
+        e.storage().instance().set(&DataKey::GovernanceCount, &new_count);
 
         // Emit event
         GovernanceDeployedEvent {
@@ -311,6 +323,29 @@ impl GovernanceFactory {
             i += 1;
         }
         governance
+        let count = Self::get_governance_count(e.clone());
+        Self::deployed_governance_range(&e, 0, count)
+    }
+
+    /// Read a predictable page of at most 100 deployment records.
+    pub fn get_deployed_governance_page(e: Env, start: u32, limit: u32) -> Vec<GovernanceInfo> {
+        let count = Self::get_governance_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_governance_range(&e, start, end)
+    }
+
+    fn deployed_governance_range(e: &Env, start: u32, end: u32) -> Vec<GovernanceInfo> {
+        let mut result = Vec::new(e);
+        let legacy: Vec<GovernanceInfo> = e.storage().instance()
+            .get(&DataKey::DeployedGovernance).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<GovernanceInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedGovernanceEntry(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get governance contracts by type
@@ -326,6 +361,8 @@ impl GovernanceFactory {
             .instance()
             .get(&DataKey::GovernanceCount)
             .unwrap_or(0);
+        let all_governance = Self::get_deployed_governance(e.clone());
+
         let mut filtered = Vec::new(&e);
         for i in 0..count {
             if let Some(gov) = e
@@ -354,6 +391,8 @@ impl GovernanceFactory {
             .instance()
             .get(&DataKey::GovernanceCount)
             .unwrap_or(0);
+        let all_governance = Self::get_deployed_governance(e.clone());
+
         let mut filtered = Vec::new(&e);
         for i in 0..count {
             if let Some(gov) = e
