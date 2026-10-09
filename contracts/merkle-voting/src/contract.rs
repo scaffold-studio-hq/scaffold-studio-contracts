@@ -51,7 +51,9 @@ impl MerkleVoting {
     pub fn __constructor(e: Env, root_hash: BytesN<32>) {
         Distributor::set_root(&e, root_hash);
         e.storage().instance().set(&DataKey::TotalVotesPro, &0i128);
-        e.storage().instance().set(&DataKey::TotalVotesAgainst, &0i128);
+        e.storage()
+            .instance()
+            .set(&DataKey::TotalVotesAgainst, &0i128);
     }
 
     pub fn vote(e: &Env, vote_data: VoteData, proof: Vec<BytesN<32>>, approve: bool) {
@@ -61,15 +63,20 @@ impl MerkleVoting {
         // Update vote totals
         if approve {
             let current_pro: i128 = e.storage().instance().get(&DataKey::TotalVotesPro).unwrap();
-            e.storage()
-                .instance()
-                .set(&DataKey::TotalVotesPro, &(current_pro + vote_data.voting_power));
+            e.storage().instance().set(
+                &DataKey::TotalVotesPro,
+                &(current_pro + vote_data.voting_power),
+            );
         } else {
-            let current_against: i128 =
-                e.storage().instance().get(&DataKey::TotalVotesAgainst).unwrap();
-            e.storage()
+            let current_against: i128 = e
+                .storage()
                 .instance()
-                .set(&DataKey::TotalVotesAgainst, &(current_against + vote_data.voting_power));
+                .get(&DataKey::TotalVotesAgainst)
+                .unwrap();
+            e.storage().instance().set(
+                &DataKey::TotalVotesAgainst,
+                &(current_against + vote_data.voting_power),
+            );
         }
     }
 
@@ -78,9 +85,16 @@ impl MerkleVoting {
     }
 
     pub fn get_vote_results(e: Env) -> (i128, i128) {
-        let votes_pro: i128 = e.storage().instance().get(&DataKey::TotalVotesPro).unwrap_or(0);
-        let votes_against: i128 =
-            e.storage().instance().get(&DataKey::TotalVotesAgainst).unwrap_or(0);
+        let votes_pro: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TotalVotesPro)
+            .unwrap_or(0);
+        let votes_against: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TotalVotesAgainst)
+            .unwrap_or(0);
         (votes_pro, votes_against)
     }
 }
