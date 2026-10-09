@@ -121,7 +121,6 @@ pub struct AdminTransferCancelledEvent {
 pub enum TokenFactoryError {
     NotAdmin = 1,
     WasmNotSet = 2,
-    InvalidTokenType = 3,
     InvalidConfig = 4,
     InvalidName = 5,
     InvalidSymbol = 6,
@@ -132,7 +131,6 @@ pub enum TokenFactoryError {
     UnexpectedCap = 11,
     AdminNotSet = 12,
     CounterOverflow = 13,
-    InvalidCharacters = 14,
     SupplyTooLarge = 15,
     NoPendingAdmin = 16,
     NotPendingAdmin = 17,
