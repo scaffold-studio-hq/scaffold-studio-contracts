@@ -144,6 +144,14 @@ jobs:
 
           '
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Install pinned stellar-scaffold CLI (0.0.26)
+      run: '# Keep client generation reproducible even if the Cargo binary cache
+
+        # contains a previous CLI version. This release supports Rust 1.89.
+
+        cargo binstall --no-confirm --locked --force stellar-scaffold-cli@0.0.26
+
+        '
   integration-tests:
     runs-on: ubuntu-latest
     steps:
