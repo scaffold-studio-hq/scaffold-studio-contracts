@@ -36,7 +36,7 @@ const STORAGE_KEYS: (keyof Schema)[] = [
 class TypedStorage<T> {
   private readonly storage: Storage;
 
-  constructor() {
+  constructor(private readonly ownedKeys: readonly (keyof T)[]) {
     this.storage = localStorage;
   }
 
@@ -82,10 +82,19 @@ class TypedStorage<T> {
 
   public clear(): void {
     STORAGE_KEYS.forEach((key) => this.storage?.removeItem(key.toString()));
+    // Do not erase unrelated localStorage entries sharing this origin.
+    for (const key of this.ownedKeys) {
+      this.removeItem(key);
+    }
   }
 }
 
 /**
  * Fully-typed wrapper around localStorage
  */
-export default new TypedStorage<Schema>();
+export default new TypedStorage<Schema>([
+  "walletId",
+  "walletAddress",
+  "walletNetwork",
+  "networkPassphrase",
+]);
