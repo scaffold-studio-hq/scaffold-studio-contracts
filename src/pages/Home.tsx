@@ -36,6 +36,22 @@ const Home: React.FC = () => (
         <Code size="md">packages/</Code>, and use the{" "}
         <Code size="md">&lt;/&gt; Debugger</Code> in the top right to simulate
         and invoke contract functions from the browser.
+        As an example, here's the <Code size="md">GuessTheNumber</Code>{" "}
+        component. Make changes to the contract and the component and see how
+        things change!
+      </Text>
+      <Text as="h2" size="lg">
+        &lt;GuessTheNumber /&gt;
+      </Text>
+      <GuessTheNumber />
+      <Text as="h2" size="lg">
+        Interact with wallets
+      </Text>
+      <Text as="p" size="md">
+        This project is already integrated with Stellar Wallet Kit, and the{" "}
+        <Code size="md">useWallet</Code> hook is available for you to use in
+        your components. You can use it to connect to get connected account
+        information.
       </Text>
 
       <Text as="h2" size="lg">
