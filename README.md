@@ -465,7 +465,10 @@ cd scaffold-studio-contracts
 stellar contract build
 
 # Generate TypeScript clients
-npm run build:clients
+stellar scaffold build --build-clients
+
+# Compile the generated client packages
+npm run install:contracts
 ```
 
 ### Deploy to Testnet
@@ -533,7 +536,10 @@ Output location: `target/wasm32v1-none/release/*.wasm`
 
 ```bash
 # Generate TypeScript packages for all contracts
-npm run build:clients
+stellar scaffold build --build-clients
+
+# Compile the generated packages
+npm run install:contracts
 ```
 
 Packages generated in: `packages/*/dist/`
