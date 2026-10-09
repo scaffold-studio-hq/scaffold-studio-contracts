@@ -32,6 +32,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: rustup target add wasm32v1-none
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Start Stellar Quickstart
         uses: stellar/quickstart@3a367f3f009f3ec4199889e922d28ce70add1753 # main @ 2026-10-06
         with:
