@@ -257,6 +257,9 @@ impl NFTFactory {
         // the value passed to the deployed contract's constructor
         let base_uri = Self::resolve_base_uri(&e, &config);
 
+        // Resolve the same metadata passed to each NFT constructor before deploying.
+        let (base_uri, metadata_owner) = Self::resolve_deployment_metadata(&e, &config);
+
         // Deploy using deployer pattern with constructor args based on NFT type
         let nft_address = match config.nft_type {
             NFTType::Enumerable => {
@@ -356,6 +359,7 @@ impl NFTFactory {
             address: nft_address.clone(),
             nft_type: config.nft_type.clone(),
             owner: effective_owner,
+            owner: metadata_owner,
             timestamp: e.ledger().timestamp(),
             name: Some(name),
             symbol: Some(symbol),
@@ -657,6 +661,19 @@ impl NFTFactory {
             NFTType::Royalties => String::from_str(e, "https://example.com/nft/"),
             _ => String::from_str(e, "www.mytoken.com"),
         })
+    // Resolve exactly the base URI and controlling address used by each NFT constructor.
+    // The Enumerable constructor uses owner; the other constructors use admin.
+    fn resolve_deployment_metadata(e: &Env, config: &NFTConfig) -> (String, Address) {
+        let base_uri = config.base_uri.clone().unwrap_or_else(|| match &config.nft_type {
+            NFTType::Royalties => String::from_str(e, "https://example.com/nft/"),
+            NFTType::Enumerable | NFTType::AccessControl => String::from_str(e, "www.mytoken.com"),
+        });
+        let metadata_owner = match &config.nft_type {
+            NFTType::Enumerable => config.owner.clone(),
+            NFTType::Royalties | NFTType::AccessControl => config.admin.clone()
+                .unwrap_or_else(|| panic_with_error!(e, NFTFactoryError::InvalidConfig)),
+        };
+        (base_uri, metadata_owner)
     }
 
     // Helper: Get WASM hash for NFT type
@@ -1299,11 +1316,41 @@ mod test {
             admin: None,
             manager: None,
             salt,
+    #[test]
+    fn test_deployment_metadata_matches_each_nft_constructor() {
+        let env = Env::default();
+        let owner = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let manager = Address::generate(&env);
+        let config_salt = BytesN::from_array(&env, &[7u8; 32]);
+        let mut config = NFTConfig {
+            nft_type: NFTType::Enumerable,
+            owner: owner.clone(),
+            admin: None,
+            manager: None,
+            salt: config_salt,
             name: None,
             symbol: None,
             base_uri: None,
         };
 
         client.deploy_nft(&deployer, &config);
+        let (uri, controller) = NFTFactory::resolve_deployment_metadata(&env, &config);
+        assert_eq!(uri, String::from_str(&env, "www.mytoken.com"));
+        assert_eq!(controller, owner);
+
+        config.nft_type = NFTType::Royalties;
+        config.admin = Some(admin.clone());
+        config.manager = Some(manager);
+        let (uri, controller) = NFTFactory::resolve_deployment_metadata(&env, &config);
+        assert_eq!(uri, String::from_str(&env, "https://example.com/nft/"));
+        assert_eq!(controller, admin);
+
+        config.nft_type = NFTType::AccessControl;
+        config.manager = None;
+        config.base_uri = Some(String::from_str(&env, "https://example.org/collection/"));
+        let (uri, controller) = NFTFactory::resolve_deployment_metadata(&env, &config);
+        assert_eq!(uri, String::from_str(&env, "https://example.org/collection/"));
+        assert_eq!(controller, admin);
     }
 }
