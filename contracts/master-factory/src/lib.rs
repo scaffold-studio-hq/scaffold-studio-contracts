@@ -97,6 +97,19 @@ pub enum MasterFactoryError {
 
 #[contractimpl]
 impl MasterFactory {
+    /// Number of ledgers below which a `UsedSalts` entry's TTL is refreshed.
+    /// Approximately 30 days at ~5s per ledger.
+    const SALT_TTL_THRESHOLD: u32 = 518_400;
+    /// TTL (in ledgers) a `UsedSalts` entry is extended to. Approximately one
+    /// year at ~5s per ledger, so a recorded salt cannot be forgotten by
+    /// archival while the factory is expected to live.
+    const SALT_TTL_EXTEND_TO: u32 = 6_307_200;
+    /// Number of ledgers below which the per-block deployment counter TTL is
+    /// refreshed. The counter is only meaningful for its own ledger.
+    const DEPLOYMENT_TTL_THRESHOLD: u32 = 100;
+    /// TTL (in ledgers) the per-block deployment counter is extended to.
+    const DEPLOYMENT_TTL_EXTEND_TO: u32 = 1_000;
+
     /// Initialize MasterFactory with admin address
     ///
     /// # Arguments
@@ -174,7 +187,7 @@ impl MasterFactory {
             .deploy_v2(wasm_hash, (deployer.clone(),));
 
         // Mark salt as used
-        e.storage().persistent().set(&salt_key, &true);
+        Self::record_salt_used(&e, &salt_key);
 
         // Update rate limit counter with overflow protection
         let new_deployments_count = deployments_count.checked_add(1)
@@ -183,6 +196,11 @@ impl MasterFactory {
                 panic_with_error!(&e, MasterFactoryError::CounterOverflow)
             });
         e.storage().temporary().set(&deployments_key, &new_deployments_count);
+        e.storage().temporary().extend_ttl(
+            &deployments_key,
+            Self::DEPLOYMENT_TTL_THRESHOLD,
+            Self::DEPLOYMENT_TTL_EXTEND_TO,
+        );
 
         // Store factory address
         e.storage().instance().set(&DataKey::TokenFactory, &factory_address);
@@ -275,7 +293,7 @@ impl MasterFactory {
             .deploy_v2(wasm_hash, (deployer.clone(),));
 
         // Mark salt as used
-        e.storage().persistent().set(&salt_key, &true);
+        Self::record_salt_used(&e, &salt_key);
 
         // Update rate limit counter with overflow protection
         let new_deployments_count = deployments_count.checked_add(1)
@@ -284,6 +302,11 @@ impl MasterFactory {
                 panic_with_error!(&e, MasterFactoryError::CounterOverflow)
             });
         e.storage().temporary().set(&deployments_key, &new_deployments_count);
+        e.storage().temporary().extend_ttl(
+            &deployments_key,
+            Self::DEPLOYMENT_TTL_THRESHOLD,
+            Self::DEPLOYMENT_TTL_EXTEND_TO,
+        );
 
         e.storage().instance().set(&DataKey::NFTFactory, &factory_address);
 
@@ -374,7 +397,7 @@ impl MasterFactory {
             .deploy_v2(wasm_hash, (deployer.clone(),));
 
         // Mark salt as used
-        e.storage().persistent().set(&salt_key, &true);
+        Self::record_salt_used(&e, &salt_key);
 
         // Update rate limit counter with overflow protection
         let new_deployments_count = deployments_count.checked_add(1)
@@ -383,6 +406,11 @@ impl MasterFactory {
                 panic_with_error!(&e, MasterFactoryError::CounterOverflow)
             });
         e.storage().temporary().set(&deployments_key, &new_deployments_count);
+        e.storage().temporary().extend_ttl(
+            &deployments_key,
+            Self::DEPLOYMENT_TTL_THRESHOLD,
+            Self::DEPLOYMENT_TTL_EXTEND_TO,
+        );
 
         e.storage().instance().set(&DataKey::GovernanceFactory, &factory_address);
 
@@ -582,6 +610,17 @@ impl MasterFactory {
         .publish(&e);
     }
 
+    // Record a consumed salt and refresh its persistent TTL so the duplicate
+    // guard is not lost to archival.
+    fn record_salt_used(e: &Env, salt_key: &DataKey) {
+        e.storage().persistent().set(salt_key, &true);
+        e.storage().persistent().extend_ttl(
+            salt_key,
+            Self::SALT_TTL_THRESHOLD,
+            Self::SALT_TTL_EXTEND_TO,
+        );
+    }
+
     // Helper function to check admin authorization
     fn require_admin(e: &Env, address: &Address) {
         let admin: Address = e
@@ -599,13 +638,33 @@ impl MasterFactory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::storage::Persistent as _, testutils::Address as _, Env,
+    };
 
     fn setup_master_factory(env: &Env) -> (MasterFactoryClient, Address) {
         let admin = Address::generate(env);
         let contract_id = env.register(MasterFactory, (&admin,));
         let client = MasterFactoryClient::new(env, &contract_id);
         (client, admin)
+    }
+
+    #[test]
+    fn test_salt_ttl_extended_after_write() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let contract_id = env.register(MasterFactory, (&admin,));
+        let salt_key = DataKey::UsedSalts(BytesN::from_array(&env, &[7u8; 32]));
+
+        // Simulate recording a consumed salt the same way the deploy paths do.
+        env.as_contract(&contract_id, || {
+            MasterFactory::record_salt_used(&env, &salt_key);
+        });
+
+        let ttl = env.as_contract(&contract_id, || {
+            env.storage().persistent().get_ttl(&salt_key)
+        });
+        assert!(ttl >= MasterFactory::SALT_TTL_EXTEND_TO - 1);
     }
 
     // ===== Constructor Tests =====
