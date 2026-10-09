@@ -727,6 +727,7 @@ mod test {
     };
     use soroban_sdk::{testutils::{Address as _, Ledger as _, storage::Persistent as _}, Env};
     use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{testutils::{Address as _, Ledger as _}, Env};
     // The TokenFactory WASM is produced by `stellar contract build` into the
     // workspace `target/wasm32v1-none/release/` directory.
     mod token_factory_wasm {
@@ -791,6 +792,14 @@ mod test {
 
     #[test]
     fn test_deploy_rejects_a_reused_salt() {
+    // ===== Rate Limiter Tests =====
+
+    // The master factory allows each factory type to be deployed only once per
+    // instance, so ten successful deployments cannot be produced from a single
+    // contract. The per-ledger counter is therefore seeded directly to the
+    // documented cap to exercise the exact branch that rejects the next one.
+    #[test]
+    fn test_rate_limit_is_per_ledger() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -809,6 +818,24 @@ mod test {
         // the failure cannot be the already-deployed guard.
         let err: MasterFactoryError = client
             .try_deploy_nft_factory(&admin, &nft_hash, &reused_salt)
+        let contract_id = client.address.clone();
+
+        let wasm_hash = env.deployer().upload_contract_wasm(token_factory_wasm::WASM);
+        let salt = BytesN::from_array(&env, &[31u8; 32]);
+
+        let ledger = 500u32;
+        env.ledger().set_sequence_number(ledger);
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .temporary()
+                .set(&DataKey::DeploymentsInBlock(ledger), &10u32);
+        });
+
+        // The eleventh deployment in the same ledger is rate limited.
+        // The client returns the raw host error, which converts into the
+        // contract's error enum.
+        let err: MasterFactoryError = client
+            .try_deploy_token_factory(&admin, &wasm_hash, &salt)
             .unwrap_err()
             .unwrap()
             .try_into()
@@ -819,6 +846,13 @@ mod test {
         // A fresh salt still deploys.
         let nft_factory = client.deploy_nft_factory(&admin, &nft_hash, &fresh_salt);
         assert_eq!(client.get_nft_factory(), Some(nft_factory));
+        assert_eq!(err, MasterFactoryError::RateLimitExceeded);
+        assert_eq!(client.get_token_factory(), None);
+
+        // A new ledger resets the counter, so the same deployment succeeds.
+        env.ledger().set_sequence_number(ledger + 1);
+        let factory_address = client.deploy_token_factory(&admin, &wasm_hash, &salt);
+        assert_eq!(client.get_token_factory(), Some(factory_address));
     }
 
 
