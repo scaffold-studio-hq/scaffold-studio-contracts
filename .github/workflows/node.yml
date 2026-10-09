@@ -32,8 +32,8 @@ jobs:
   contracts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v3
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/
@@ -49,8 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/bin/
@@ -69,7 +69,7 @@ jobs:
           network: local
       - run: sudo apt-get update && sudo apt-get install -y libudev-dev libdbus-1-dev pkg-config
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@38e8f5e4c386b611d51e8aa997b9a06a3c8eb67a # v1.15.6
+        uses: cargo-bins/cargo-binstall@c06f6a0003f7c6165a00c89d1697731c9e8a5c72 # v1.25.2
       - name: Check for stellar-scaffold binary
         run: |
           if ! command -v stellar-scaffold &> /dev/null; then
@@ -78,7 +78,7 @@ jobs:
           else
             echo "stellar-scaffold already installed. Clear cache to force reinstall."
           fi
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -106,8 +106,8 @@ jobs:
   integration-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v3
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/
