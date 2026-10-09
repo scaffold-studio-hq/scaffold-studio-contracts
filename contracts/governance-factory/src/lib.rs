@@ -625,6 +625,95 @@ mod test {
             governance_type: GovernanceType::MerkleVoting,
             admin,
             root_hash: None, // Missing
+            governance_type: GovernanceType::Multisig,
+            admin,
+            root_hash: None,
+            owners: None, // Missing
+            threshold: Some(2),
+            salt,
+        };
+
+        client.deploy_governance(&deployer, &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_deploy_multisig_missing_threshold() {
+        let env = Env::default();
+        let (client, _admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let owner1 = Address::generate(&env);
+        let owner2 = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[2u8; 32]);
+
+        let mut owners = Vec::new(&env);
+        owners.push_back(owner1);
+        owners.push_back(owner2);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::Multisig,
+            admin,
+            root_hash: None,
+            owners: Some(owners),
+            threshold: None, // Missing
+            salt,
+        };
+
+        client.deploy_governance(&deployer, &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_deploy_multisig_threshold_zero() {
+        let env = Env::default();
+        let (client, _admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let owner1 = Address::generate(&env);
+        let owner2 = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[2u8; 32]);
+
+        let mut owners = Vec::new(&env);
+        owners.push_back(owner1);
+        owners.push_back(owner2);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::Multisig,
+            admin,
+            root_hash: None,
+            owners: Some(owners),
+            threshold: Some(0), // Invalid: 0
+            salt,
+        };
+
+        client.deploy_governance(&deployer, &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #4)")]
+    fn test_deploy_multisig_threshold_too_high() {
+        let env = Env::default();
+        let (client, _admin, _wasm) = setup_with_wasm(&env);
+
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let owner1 = Address::generate(&env);
+        let owner2 = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[2u8; 32]);
+
+        let mut owners = Vec::new(&env);
+        owners.push_back(owner1);
+        owners.push_back(owner2);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::Multisig,
+            admin,
+            root_hash: None,
+            owners: Some(owners),
+            threshold: Some(3), // Invalid: > owners.len()
             salt,
         };
 
@@ -817,4 +906,73 @@ mod test {
         client.unpause(&admin);
         client.deploy_governance(&deployer, &config);
     }
+    // ===== Pause / Unpause Tests =====
+
+    /// While the factory is paused, `deploy_governance` is rejected before any
+    /// deployment work happens, bubbling up
+    /// `GovernanceFactoryError::ContractPaused` (`Contract, #8`).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #8)")]
+    fn test_pause_blocks_deploy_governance() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin, _wasm) = setup_with_wasm(&env);
+        client.pause(&admin);
+
+        let deployer = Address::generate(&env);
+        let gov_admin = Address::generate(&env);
+        let root_hash = BytesN::from_array(&env, &[3u8; 32]);
+        let salt = BytesN::from_array(&env, &[7u8; 32]);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::MerkleVoting,
+            admin: gov_admin,
+            root_hash: Some(root_hash),
+            owners: None,
+            threshold: None,
+            salt,
+        };
+
+        client.deploy_governance(&deployer, &config);
+    }
+
+    /// After `unpause`, the pause gate is lifted: `deploy_governance` now gets
+    /// past the `Paused` check and fails further down at the (unconfigured)
+    /// WASM lookup, `GovernanceFactoryError::WasmNotSet` (`Contract, #2`).
+    ///
+    /// NOTE: a genuine *successful* deployment cannot be asserted here with a
+    /// plain `cargo test`: `deploy_v2` requires an uploaded contract WASM,
+    /// which unit tests can only obtain from a compiled `.wasm` artifact
+    /// (via `contractimport!`) that this workspace does not build. Reaching
+    /// `WasmNotSet` proves the `ContractPaused` branch was skipped.
+    #[test]
+    #[should_panic(expected = "Error(Contract, #2)")]
+    fn test_unpause_allows_deploy_governance_to_proceed() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Deliberately no WASM configured, so the only gate left to observe is
+        // the pause flag itself.
+        let (client, admin) = setup_governance_factory(&env);
+        client.pause(&admin);
+        client.unpause(&admin);
+
+        let deployer = Address::generate(&env);
+        let gov_admin = Address::generate(&env);
+        let root_hash = BytesN::from_array(&env, &[4u8; 32]);
+        let salt = BytesN::from_array(&env, &[8u8; 32]);
+
+        let config = GovernanceConfig {
+            governance_type: GovernanceType::MerkleVoting,
+            admin: gov_admin,
+            root_hash: Some(root_hash),
+            owners: None,
+            threshold: None,
+            salt,
+        };
+
+        client.deploy_governance(&deployer, &config);
+    }
+
 }
