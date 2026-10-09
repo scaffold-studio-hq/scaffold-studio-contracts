@@ -59,6 +59,12 @@ const Home: React.FC = () => (
       <Text as="p" size="md">
         Each generated client exposes the contract's methods with full
         TypeScript types, so you can call them directly from your components.
+        As an example, here's the <Code size="md">GuessTheNumber</Code>{" "}
+        component. Make changes to the contract and the component and see how
+        things change!
+      </Text>
+      <Text as="h2" size="lg">
+        &lt;GuessTheNumber /&gt;
       </Text>
       <Text as="h2" size="lg">
         Interact with wallets
