@@ -27,6 +27,7 @@ pub struct ExampleContract;
 #[repr(u32)]
 pub enum ExampleContractError {
     Unauthorized = 1,
+    OwnerNotSet = 2,
 }
 
 #[contractimpl]
@@ -58,6 +59,7 @@ impl ExampleContract {
             .instance()
             .get(&OWNER)
             .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::Unauthorized));
+        let owner: Address = e.storage().instance().get(&OWNER).unwrap_or_else(|| panic_with_error!(e, ExampleContractError::OwnerNotSet));
         owner.require_auth();
 
         Base::mint(e, &account, amount);
@@ -80,6 +82,7 @@ impl Pausable for ExampleContract {
             .instance()
             .get(&OWNER)
             .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::Unauthorized));
+        let owner: Address = e.storage().instance().get(&OWNER).unwrap_or_else(|| panic_with_error!(e, ExampleContractError::OwnerNotSet));
         if owner != caller {
             panic_with_error!(e, ExampleContractError::Unauthorized);
         }
@@ -97,6 +100,7 @@ impl Pausable for ExampleContract {
             .instance()
             .get(&OWNER)
             .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::Unauthorized));
+        let owner: Address = e.storage().instance().get(&OWNER).unwrap_or_else(|| panic_with_error!(e, ExampleContractError::OwnerNotSet));
         if owner != caller {
             panic_with_error!(e, ExampleContractError::Unauthorized);
         }
