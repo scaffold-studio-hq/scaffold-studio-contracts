@@ -26,6 +26,10 @@ fn create_client<'a>(e: &Env, admin: &Address, manager: &Address) -> ExampleCont
     let name = String::from_str(e, "My Token");
     let symbol = String::from_str(e, "TKN");
     let address = e.register(ExampleContract, (admin, manager, base_uri, name, symbol));
+            String::from_str(e, "Royal NFT"),
+            String::from_str(e, "RNFT"),
+        ),
+    );
     ExampleContractClient::new(e, &address)
 }
 
@@ -121,6 +125,9 @@ fn test_manager_can_set_default_royalty() {
 #[test]
 #[should_panic(expected = "Error(Contract, #2000)")]
 fn test_non_manager_cannot_set_default_royalty() {
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn mint_with_royalty_rejects_over_10000_bps() {
     let e = Env::default();
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
@@ -136,6 +143,12 @@ fn test_non_manager_cannot_set_default_royalty() {
 /// it falls back to the collection default.
 #[test]
 fn test_manager_can_set_and_remove_token_royalty() {
+    client.mint_with_royalty(&admin, &receiver, &10_001);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn set_default_royalty_rejects_over_10000_bps() {
     let e = Env::default();
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
@@ -164,6 +177,12 @@ fn test_manager_can_set_and_remove_token_royalty() {
 #[test]
 #[should_panic(expected = "Error(Contract, #2000)")]
 fn test_non_manager_cannot_set_token_royalty() {
+    client.set_default_royalty(&receiver, &10_001, &manager);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn set_token_royalty_rejects_over_10000_bps() {
     let e = Env::default();
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
@@ -229,4 +248,6 @@ fn outsider_cannot_remove_token_royalty() {
     let token = client.mint(&admin);
     client.set_token_royalty(&token, &manager, &500, &manager);
     client.remove_token_royalty(&token, &outsider);
+    let token_id = client.mint(&admin);
+    client.set_token_royalty(&token_id, &receiver, &10_001, &manager);
 }
