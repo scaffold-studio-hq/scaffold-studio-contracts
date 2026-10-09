@@ -13,8 +13,6 @@ pub struct MasterFactory;
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
-    Admin,
-    PendingAdmin,
     TokenFactory,
     NFTFactory,
     GovernanceFactory,
@@ -23,7 +21,6 @@ pub enum DataKey {
     Deploying,
     UsedSalts(BytesN<32>),
     DeploymentsInBlock(u32),
-    Paused,
 }
 
 #[contracttype]
@@ -84,15 +81,12 @@ pub struct AdminTransferCancelledEvent {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum MasterFactoryError {
-    NotAdmin = 1,
     FactoryAlreadyDeployed = 2,
     AdminNotSet = 4,
+    FactoryNotFound = 3,
     Reentrancy = 5,
     DuplicateSalt = 6,
     RateLimitExceeded = 7,
-    NoPendingAdmin = 8,
-    NotPendingAdmin = 9,
-    ContractPaused = 10,
     CounterOverflow = 11,
 }
 
@@ -122,13 +116,13 @@ impl MasterFactory {
     /// # Arguments
     /// * `admin` - Address that will have admin privileges
     pub fn __constructor(e: Env, admin: Address) {
-        e.storage().instance().set(&DataKey::Admin, &admin);
+        factory_common::set_admin(&e, &admin);
 
         // Deployed factories are stored under indexed persistent keys; only the
         // small counter lives in instance storage.
         e.storage().instance().set(&DataKey::FactoryCount, &0u32);
         e.storage().instance().set(&DataKey::Deploying, &false);
-        e.storage().instance().set(&DataKey::Paused, &false);
+        factory_common::set_paused(&e, false);
     }
 
     /// Deploy TokenFactory contract
@@ -150,13 +144,10 @@ impl MasterFactory {
         deployer.require_auth();
 
         // Check admin
-        Self::require_admin(&e, &deployer);
+        factory_common::require_admin(&e, &deployer);
 
-        // Check if paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
-        if paused {
-            panic_with_error!(&e, MasterFactoryError::ContractPaused);
-        }
+        // Reject deployments while the contract is paused
+        factory_common::require_not_paused(&e);
 
         // Reentrancy guard
         let is_deploying = e.storage().instance().get(&DataKey::Deploying).unwrap_or(false);
@@ -252,13 +243,10 @@ impl MasterFactory {
         salt: BytesN<32>,
     ) -> Address {
         deployer.require_auth();
-        Self::require_admin(&e, &deployer);
+        factory_common::require_admin(&e, &deployer);
 
-        // Check if paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
-        if paused {
-            panic_with_error!(&e, MasterFactoryError::ContractPaused);
-        }
+        // Reject deployments while the contract is paused
+        factory_common::require_not_paused(&e);
 
         // Reentrancy guard
         let is_deploying = e.storage().instance().get(&DataKey::Deploying).unwrap_or(false);
@@ -351,13 +339,10 @@ impl MasterFactory {
         salt: BytesN<32>,
     ) -> Address {
         deployer.require_auth();
-        Self::require_admin(&e, &deployer);
+        factory_common::require_admin(&e, &deployer);
 
-        // Check if paused
-        let paused = e.storage().instance().get(&DataKey::Paused).unwrap_or(false);
-        if paused {
-            panic_with_error!(&e, MasterFactoryError::ContractPaused);
-        }
+        // Reject deployments while the contract is paused
+        factory_common::require_not_paused(&e);
 
         // Reentrancy guard
         let is_deploying = e.storage().instance().get(&DataKey::Deploying).unwrap_or(false);
@@ -510,70 +495,17 @@ impl MasterFactory {
         e.storage().instance().get(&DataKey::FactoryCount).unwrap_or(0)
     }
 
-    /// Get admin address
-    ///
-    /// # Returns
-    /// Address of the admin
-    pub fn get_admin(e: Env) -> Address {
-        e.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, MasterFactoryError::AdminNotSet))
-    }
-
-    /// Get pending admin address
-    ///
-    /// # Returns
-    /// Option containing pending admin address
-    pub fn get_pending_admin(e: Env) -> Option<Address> {
-        e.storage().instance().get(&DataKey::PendingAdmin)
-    }
-
-    /// Pause contract (emergency stop)
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    pub fn pause(e: Env, admin: Address) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::Paused, &true);
-
-        ContractPausedEvent {
-            admin: admin.clone(),
-        }
-        .publish(&e);
-    }
-
-    /// Unpause contract
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    pub fn unpause(e: Env, admin: Address) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-        e.storage().instance().set(&DataKey::Paused, &false);
-
-        ContractUnpausedEvent {
-            admin: admin.clone(),
-        }
-        .publish(&e);
-    }
-
     /// Upgrade the factory contract to a new WASM hash
     ///
     /// # Arguments
     /// * `new_wasm_hash` - New WASM hash to upgrade to
     pub fn upgrade(e: Env, new_wasm_hash: BytesN<32>) {
         // Get admin and require their authorization
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, MasterFactoryError::AdminNotSet));
+        let admin = factory_common::get_admin(&e);
         admin.require_auth();
 
         // Pause contract during upgrade
-        e.storage().instance().set(&DataKey::Paused, &true);
+        factory_common::set_paused(&e, true);
 
         // Emit upgrade event
         ContractUpgradedEvent {
@@ -584,47 +516,61 @@ impl MasterFactory {
         e.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
-    /// Initiate admin transfer (step 1 of 2-step process)
+    /// Get admin address
+    ///
+    /// # Returns
+    /// Address of the admin
+    pub fn get_admin(e: Env) -> Address {
+        factory_common::get_admin(&e)
+    }
+
+    /// Get pending admin address
+    ///
+    /// # Returns
+    /// Option containing pending admin address
+    pub fn get_pending_admin(e: Env) -> Option<Address> {
+        factory_common::get_pending_admin(&e)
+    }
+
+    /// Pause contract (emergency stop)
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (for authorization)
+    pub fn pause(e: Env, admin: Address) {
+        factory_common::pause(&e, &admin);
+
+        ContractPausedEvent { admin }.publish(&e);
+    }
+
+    /// Unpause contract
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (for authorization)
+    pub fn unpause(e: Env, admin: Address) {
+        factory_common::unpause(&e, &admin);
+
+        ContractUnpausedEvent { admin }.publish(&e);
+    }
+
+    /// Initiate admin transfer (step 1 of 2)
     ///
     /// # Arguments
     /// * `current_admin` - Current admin address (must match stored admin)
     /// * `new_admin` - New admin address
     pub fn initiate_admin_transfer(e: Env, current_admin: Address, new_admin: Address) {
-        current_admin.require_auth();
-        Self::require_admin(&e, &current_admin);
+        factory_common::initiate_admin_transfer(&e, &current_admin, &new_admin);
 
-        e.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
-
-        AdminTransferInitiatedEvent {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&e);
+        AdminTransferInitiatedEvent { new_admin }.publish(&e);
     }
 
-    /// Accept admin transfer (step 2 of 2-step process)
+    /// Accept admin transfer (step 2 of 2)
     ///
     /// # Arguments
     /// * `new_admin` - New admin address accepting the role
     pub fn accept_admin_transfer(e: Env, new_admin: Address) {
-        new_admin.require_auth();
+        factory_common::accept_admin_transfer(&e, &new_admin);
 
-        let pending_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::PendingAdmin)
-            .unwrap_or_else(|| panic_with_error!(&e, MasterFactoryError::NoPendingAdmin));
-
-        if pending_admin != new_admin {
-            panic_with_error!(&e, MasterFactoryError::NotPendingAdmin);
-        }
-
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
-        e.storage().instance().remove(&DataKey::PendingAdmin);
-
-        AdminTransferredEvent {
-            new_admin: new_admin.clone(),
-        }
-        .publish(&e);
+        AdminTransferredEvent { new_admin }.publish(&e);
     }
 
     /// Cancel pending admin transfer
@@ -632,13 +578,10 @@ impl MasterFactory {
     /// # Arguments
     /// * `current_admin` - Current admin address
     pub fn cancel_admin_transfer(e: Env, current_admin: Address) {
-        current_admin.require_auth();
-        Self::require_admin(&e, &current_admin);
-
-        e.storage().instance().remove(&DataKey::PendingAdmin);
+        factory_common::cancel_admin_transfer(&e, &current_admin);
 
         AdminTransferCancelledEvent {
-            admin: current_admin.clone(),
+            admin: current_admin,
         }
         .publish(&e);
     }
@@ -931,7 +874,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #9)")] // NotPendingAdmin
+    #[should_panic(expected = "Error(Contract, #4)")] // NotPendingAdmin
     fn test_twostep_wrong_acceptor() {
         let env = Env::default();
         env.mock_all_auths();
