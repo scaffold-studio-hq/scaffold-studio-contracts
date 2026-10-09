@@ -834,6 +834,7 @@ mod test {
         Env, String,
     };
     use soroban_sdk::{testutils::{Address as _, Events}, Env, String};
+    use soroban_sdk::{testutils::{Address as _, Events}, Env, IntoVal, Map, String, Symbol, TryFromVal, Val};
     // The Allowlist token WASM is produced by `stellar contract build` into the
     // workspace `target/wasm32v1-none/release/` directory.
     mod fungible_allowlist_wasm {
@@ -846,6 +847,33 @@ mod test {
 
     mod fungible_vault_wasm {
         soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/fungible_vault_example.wasm");
+    }
+
+    /// Returns the `token_type` carried by the `TokenDeployedEvent` that was
+    /// published for `token_address`, or `None` when no such event was emitted.
+    fn token_deployed_event_type(env: &Env, token_address: &Address) -> Option<TokenType> {
+        let event_topic: Val = Symbol::new(env, "token_deployed_event").into_val(env);
+        let address_key = Symbol::new(env, "token_address");
+        let token_type_key = Symbol::new(env, "token_type");
+
+        for (_, topics, data) in env.events().all().iter() {
+            if topics.get(0) != Some(event_topic.clone()) {
+                continue;
+            }
+            let Ok(event_data) = Map::<Symbol, Val>::try_from_val(env, &data) else {
+                continue;
+            };
+            let Some(address_val) = event_data.get(address_key.clone()) else {
+                continue;
+            };
+            if Address::try_from_val(env, &address_val).ok().as_ref() != Some(token_address) {
+                continue;
+            }
+            if let Some(type_val) = event_data.get(token_type_key.clone()) {
+                return TokenType::try_from_val(env, &type_val).ok();
+            }
+        }
+        None
     }
 
 
@@ -933,6 +961,10 @@ mod test {
 
     #[test]
     fn test_deploy_token_accepts_newline_and_tab() {
+    // ===== Allowlist Success-Path Test =====
+
+    #[test]
+    fn test_deploy_allowlist_token_success() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -953,6 +985,17 @@ mod test {
             symbol,
             decimals: 7,
             salt: BytesN::from_array(&env, &[72u8; 32]),
+        let manager = Address::generate(&env);
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager,
+            initial_supply: 1_000_000,
+            cap: None,
+            name: String::from_str(&env, "Test Token"),
+            symbol: String::from_str(&env, "TEST"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[51u8; 32]),
             asset: None,
             decimals_offset: None,
         };
@@ -1020,6 +1063,14 @@ mod test {
         // The Capped constructor received initial_supply in the right slot.
         let capped = fungible_capped_wasm::Client::new(&env, &capped_address);
         assert_eq!(capped.total_supply(), 1_000_000);
+        let tokens = client.get_deployed_tokens();
+        let info = tokens.get(0).unwrap();
+        assert_eq!(info.address, token_address);
+        assert_eq!(info.token_type, TokenType::Allowlist);
+        assert_eq!(
+            token_deployed_event_type(&env, &token_address),
+            Some(TokenType::Allowlist)
+        );
     }
 
 
