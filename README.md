@@ -830,6 +830,7 @@ Licensed under the Apache License, Version 2.0 - see [LICENSE](LICENSE) file for
 **Part of the Stellar Studio Ecosystem**
 
 [Contracts](.) • [Frontend](https://github.com/scaffold-studio-hq/stellar-studio-frontend) • [MCP Server](https://github.com/scaffold-studio-hq/stellar-studio-mcp-server)
+[Contracts](.)
 
 Built with Rust and Soroban for Stellar
 
