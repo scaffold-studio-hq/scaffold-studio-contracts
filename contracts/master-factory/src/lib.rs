@@ -842,6 +842,10 @@ mod test {
 
     #[test]
     fn test_deploy_nft_factory_success() {
+    // ===== Success-Path Deployment Tests =====
+
+    #[test]
+    fn test_deploy_token_factory_success() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -960,6 +964,28 @@ mod test {
         assert_eq!(factories.get(0).unwrap().address, token_factory);
         assert_eq!(factories.get(1).unwrap().address, nft_factory);
         assert_eq!(factories.get(2).unwrap().address, governance_factory);
+        let wasm_hash = env.deployer().upload_contract_wasm(token_factory_wasm::WASM);
+        let salt = BytesN::from_array(&env, &[11u8; 32]);
+
+        let factory_address = client.deploy_token_factory(&admin, &wasm_hash, &salt);
+
+        // The returned address is persisted and recorded in the deployed list.
+        assert_eq!(client.get_token_factory(), Some(factory_address.clone()));
+        let factories = client.get_deployed_factories();
+        assert_eq!(factories.len(), 1);
+        let info = factories.get(0).unwrap();
+        assert_eq!(info.address, factory_address);
+        assert_eq!(info.factory_type, FactoryType::Token);
+
+        // FactoryDeployedEvent carries the same address and factory type.
+        assert_eq!(
+            factory_deployed_event_type(&env, &factory_address),
+            Some(FactoryType::Token)
+        );
+
+        // The deployer is installed as the new factory's admin.
+        let deployed_factory = token_factory_wasm::Client::new(&env, &factory_address);
+        assert_eq!(deployed_factory.get_admin(), admin);
     }
 
 
