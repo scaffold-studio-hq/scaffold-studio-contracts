@@ -8,6 +8,7 @@ import {
 } from "react";
 import { wallet } from "../util/wallet";
 import storage from "../util/storage";
+import { useNotification } from "../hooks/useNotification";
 
 export interface WalletContextType {
   address?: string;
@@ -33,6 +34,8 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     useState<Omit<WalletContextType, "isPending">>(initialState);
   const [isPending, startTransition] = useTransition();
   const popupLock = useRef(false);
+  const errorNotified = useRef(false);
+  const { addNotification } = useNotification();
   const signTransaction = wallet.signTransaction.bind(wallet);
 
   const nullify = () => {
@@ -94,6 +97,10 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
           wallet.getNetwork(),
         ]);
 
+        // A successful poll clears the previous error so a later failure can
+        // notify the user again.
+        errorNotified.current = false;
+
         if (!a.address) storage.setItem("walletId", "");
         if (
           a.address !== state.address ||
@@ -106,10 +113,17 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       } catch (e) {
         // If `getNetwork` or `getAddress` throw errors... sign the user out???
         nullify();
-        // then log the error (instead of throwing) so we have visibility
-        // into the error while working on Scaffold Stellar but we do not
-        // crash the app process
-        console.error(e);
+        // Surface the error instead of throwing so the app keeps running, but
+        // only once per failure burst so the polling loop cannot spam the user.
+        if (!errorNotified.current) {
+          errorNotified.current = true;
+          addNotification(
+            e instanceof Error
+              ? `Wallet connection error: ${e.message}`
+              : "Wallet connection error. Please check your wallet extension.",
+            "error",
+          );
+        }
       } finally {
         popupLock.current = false;
       }

@@ -2,6 +2,7 @@ import * as React from "react";
 import { Server, Api } from "@stellar/stellar-sdk/rpc";
 import { xdr } from "@stellar/stellar-sdk";
 import { rpcUrl, stellarNetwork } from "../contracts/util";
+import { useNotification } from "./useNotification";
 
 /**
  * Concatenated `${contractId}:${topic}`
@@ -35,6 +36,7 @@ export function useSubscription(
   onEvent: (event: Api.EventResponse) => void,
   pollInterval = 5000,
 ) {
+  const { addNotification } = useNotification();
   const id = `${contractId}:${topic}`;
   paging[id] = paging[id] || {};
 
@@ -73,9 +75,11 @@ export function useSubscription(
             try {
               onEvent(event);
             } catch (error) {
-              console.error(
-                "Poll Events: subscription callback had error: ",
-                error,
+              addNotification(
+                error instanceof Error
+                  ? `Poll Events: subscription callback error: ${error.message}`
+                  : "Poll Events: subscription callback error.",
+                "error",
               );
             } finally {
               paging[id].pagingToken = event.pagingToken;
@@ -83,7 +87,12 @@ export function useSubscription(
           });
         }
       } catch (error) {
-        console.error("Poll Events: error: ", error);
+        addNotification(
+          error instanceof Error
+            ? `Poll Events: ${error.message}`
+            : "Poll Events: error.",
+          "error",
+        );
       } finally {
         if (!stop) {
           timeoutId = setTimeout(() => void pollEvents(), pollInterval);
@@ -97,5 +106,5 @@ export function useSubscription(
       if (timeoutId != null) clearTimeout(timeoutId);
       stop = true;
     };
-  }, [contractId, topic, onEvent, id, pollInterval]);
+  }, [contractId, topic, onEvent, id, pollInterval, addNotification]);
 }

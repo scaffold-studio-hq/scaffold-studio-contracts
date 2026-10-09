@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button, Code, Input, Text } from "@stellar/design-system";
 import { useWallet } from "../hooks/useWallet";
+import { useNotification } from "../hooks/useNotification";
 import game from "../contracts/guess_the_number";
 import { Box } from "../components/layout/Box";
 
@@ -8,6 +9,7 @@ export const GuessTheNumber = () => {
   const [guessedIt, setGuessedIt] = useState<boolean>();
   const [theGuess, setTheGuess] = useState<number>();
   const { address } = useWallet();
+  const { addNotification } = useNotification();
 
   if (!address) {
     return (
@@ -24,7 +26,7 @@ export const GuessTheNumber = () => {
       guesser: address,
     });
     if (result.isErr()) {
-      console.error(result.unwrapErr());
+      addNotification("Failed to submit your guess.", "error");
     } else {
       setGuessedIt(result.unwrap());
     }
