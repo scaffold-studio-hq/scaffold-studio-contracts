@@ -2,7 +2,11 @@
 
 extern crate std;
 
-use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env, String};
+use soroban_sdk::{
+    contract, contractimpl,
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, Env, IntoVal, String,
+};
 use stellar_macros::default_impl;
 use stellar_tokens::fungible::{Base, FungibleToken};
 
@@ -417,4 +421,71 @@ fn test_vault_rejects_itself_as_asset() {
 
     // The constructor sees its own address as the underlying asset.
     e.register_at(&vault_address, ExampleContract, (vault_address.clone(), 6u32));
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn test_deposit_requires_operator_auth() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let user = Address::generate(&e);
+    let operator = Address::generate(&e);
+    let initial_supply = 1_000_000_000_000_000_000i128;
+    let decimals_offset = 6;
+    let deposit_amount = 100_000_000_000_000_000i128;
+
+    let asset_client = create_asset_client(&e, initial_supply, &admin);
+    let asset_address = asset_client.address.clone();
+    let vault_client = create_vault_client(&e, &asset_address, decimals_offset);
+
+    // Fund the depositor; setup only.
+    e.mock_all_auths();
+    asset_client.transfer(&admin, &user, &deposit_amount);
+
+    // Only the depositor (`user`) authorizes the deposit; `operator` never does.
+    // `deposit` begins with `operator.require_auth()`, so the host must reject it.
+    e.mock_auths(&[MockAuth {
+        address: &user,
+        invoke: &MockAuthInvoke {
+            contract: &vault_client.address,
+            fn_name: "deposit",
+            args: (deposit_amount, user.clone(), user.clone(), operator.clone()).into_val(&e),
+            sub_invokes: &[],
+        },
+    }]);
+
+    vault_client.deposit(&deposit_amount, &user, &user, &operator);
+}
+
+#[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn test_withdraw_requires_operator_auth() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let user = Address::generate(&e);
+    let operator = Address::generate(&e);
+    let initial_supply = 1_000_000_000_000_000_000i128;
+    let decimals_offset = 6;
+    let deposit_amount = 100_000_000_000_000_000i128;
+    let withdraw_amount = 50_000_000_000_000_000i128;
+
+    let asset_client = create_asset_client(&e, initial_supply, &admin);
+    let asset_address = asset_client.address.clone();
+    let vault_client = create_vault_client(&e, &asset_address, decimals_offset);
+
+    // Deposit successfully first; setup only.
+    e.mock_all_auths();
+    asset_client.transfer(&admin, &user, &deposit_amount);
+    vault_client.deposit(&deposit_amount, &user, &user, &user);
+
+    // Only the owner (`user`) authorizes; `operator` never does. `withdraw`
+    // begins with `operator.require_auth()`, so the host must reject it.
+    e.mock_auths(&[MockAuth {
+        address: &user,
+        invoke: &MockAuthInvoke {
+            contract: &vault_client.address,
+            fn_name: "withdraw",
+            args: (withdraw_amount, user.clone(), user.clone(), operator.clone()).into_val(&e),
+            sub_invokes: &[],
+        },
+    }]);
+
+    vault_client.withdraw(&withdraw_amount, &user, &user, &operator);
 }
