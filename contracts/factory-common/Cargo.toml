@@ -1,18 +1,17 @@
 [package]
-name = "master-factory"
+name = "factory-common"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 
 [lib]
-crate-type = ["cdylib"]
+# Interface crate: it holds no contract entry points, so it is deliberately an
+# `rlib` and is never compiled to a `.wasm`.
+crate-type = ["rlib"]
 doctest = false
 
 [dependencies]
 soroban-sdk.workspace = true
-factory-common = { path = "../factory-common" }
-
-[dev-dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
