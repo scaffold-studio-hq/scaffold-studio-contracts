@@ -287,11 +287,23 @@ impl NFTFactory {
             }
         };
 
+        // `NFTInfo.owner` must name the address that actually controls the
+        // deployed collection. Enumerable NFTs are owned by `config.owner`;
+        // Royalties and Access Control NFTs are controlled by their `admin`,
+        // which is the privileged address passed to their constructors.
+        let effective_owner = match config.nft_type {
+            NFTType::Enumerable => config.owner.clone(),
+            NFTType::Royalties | NFTType::AccessControl => config
+                .admin
+                .clone()
+                .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::InvalidConfig)),
+        };
+
         // Store NFT info
         let nft_info = NFTInfo {
             address: nft_address.clone(),
             nft_type: config.nft_type.clone(),
-            owner: config.owner.clone(),
+            owner: effective_owner,
             timestamp: e.ledger().timestamp(),
             name: Some(name),
             symbol: Some(symbol),
