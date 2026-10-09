@@ -458,8 +458,8 @@ __constructor(root_hash)
 
 ```bash
 # Clone repository
-git clone https://github.com/Scaffold-Studio/Stellar-Studio-Contracts.git
-cd Stellar-Studio-Contracts
+git clone https://github.com/scaffold-studio-hq/scaffold-studio-contracts.git
+cd scaffold-studio-contracts
 
 # Build all contracts
 stellar contract build
@@ -780,8 +780,8 @@ stellar-studio-contracts/
 - [Main README](../README.md) - Stellar Studio ecosystem overview
 
 **Related Repositories:**
-- [Stellar Studio Frontend](../stellar-studio-frontend/) - Web interface
-- [Stellar Studio MCP Server](../stellar-studio-mcp-server/) - AI tools backend
+- [Stellar Studio Frontend](https://github.com/scaffold-studio-hq/stellar-studio-frontend) - Web interface
+- [Stellar Studio MCP Server](https://github.com/scaffold-studio-hq/stellar-studio-mcp-server) - AI tools backend
 
 **External Links:**
 - [Stellar Documentation](https://developers.stellar.org/)
@@ -815,7 +815,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Part of the Stellar Studio Ecosystem**
 
-[Contracts](.) • [Frontend](../stellar-studio-frontend/) • [MCP Server](../stellar-studio-mcp-server/)
+[Contracts](.) • [Frontend](https://github.com/scaffold-studio-hq/stellar-studio-frontend) • [MCP Server](https://github.com/scaffold-studio-hq/stellar-studio-mcp-server)
 
 Built with Rust and Soroban for Stellar
 
