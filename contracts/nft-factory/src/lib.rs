@@ -28,6 +28,8 @@ pub enum DataKey {
     Paused, // Emergency pause
     UsedSalts(BytesN<32>),     // Salts consumed by successful deployments
     Paused,                    // Emergency pause
+    // Append-only variant for compatibility with existing deployed keys.
+    DeployedNFT(u32),
 }
 
 #[contracttype]
@@ -137,6 +139,7 @@ impl NFTFactory {
 
         // Deployed NFTs are stored under indexed persistent keys; only the
         // small counter lives in instance storage.
+        // Keep the original vector key reserved for read-only upgrade fallback.
         e.storage().instance().set(&DataKey::NFTCount, &0u32);
 
         // Initialize paused flag
@@ -360,6 +363,7 @@ impl NFTFactory {
         };
 
         // Increment NFT count with overflow protection
+        // Count is the next stable index. Never rewrite the growing legacy Vec.
         let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
         let new_count = count
             .checked_add(1)
@@ -378,6 +382,8 @@ impl NFTFactory {
             Self::RECORD_TTL_EXTEND_TO,
         );
 
+            .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::CounterOverflow));
+        e.storage().persistent().set(&DataKey::DeployedNFT(count), &nft_info);
         e.storage().instance().set(&DataKey::NFTCount, &new_count);
 
         // Emit event
@@ -434,6 +440,29 @@ impl NFTFactory {
             i += 1;
         }
         nfts
+        let count = Self::get_nft_count(e.clone());
+        Self::deployed_nfts_range(&e, 0, count)
+    }
+
+    /// Bound a deployment-record read to at most 100 indexed keys.
+    pub fn get_deployed_nfts_page(e: Env, start: u32, limit: u32) -> Vec<NFTInfo> {
+        let count = Self::get_nft_count(e.clone());
+        let end = start.saturating_add(limit.min(100)).min(count);
+        Self::deployed_nfts_range(&e, start, end)
+    }
+
+    fn deployed_nfts_range(e: &Env, start: u32, end: u32) -> Vec<NFTInfo> {
+        let mut result = Vec::new(e);
+        let legacy: Vec<NFTInfo> = e.storage().instance()
+            .get(&DataKey::DeployedNFTs).unwrap_or_else(|| Vec::new(e));
+        for index in start..end {
+            let indexed: Option<NFTInfo> = e.storage().persistent()
+                .get(&DataKey::DeployedNFT(index));
+            if let Some(info) = indexed.or_else(|| legacy.get(index)) {
+                result.push_back(info);
+            }
+        }
+        result
     }
 
     /// Get NFTs by type
@@ -445,6 +474,8 @@ impl NFTFactory {
     /// Vector of NFTInfo for the specified type
     pub fn get_nfts_by_type(e: Env, nft_type: NFTType) -> Vec<NFTInfo> {
         let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
+        let all_nfts = Self::get_deployed_nfts(e.clone());
+
         let mut filtered = Vec::new(&e);
         for i in 0..count {
             if let Some(nft) = e
@@ -469,6 +500,8 @@ impl NFTFactory {
     /// Vector of NFTInfo for NFTs owned by the address
     pub fn get_nfts_by_owner(e: Env, owner: Address) -> Vec<NFTInfo> {
         let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
+        let all_nfts = Self::get_deployed_nfts(e.clone());
+
         let mut filtered = Vec::new(&e);
         for i in 0..count {
             if let Some(nft) = e
