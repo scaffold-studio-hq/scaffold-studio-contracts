@@ -90,6 +90,10 @@ pub enum MasterFactoryError {
     CounterOverflow = 11,
 }
 
+// Approximate ledger counts at 5s/ledger. Clamp at runtime to network max TTL.
+const USED_SALT_REFRESH_THRESHOLD: u32 = 30 * 17_280;
+const USED_SALT_TTL_TARGET: u32 = 90 * 17_280;
+
 #[contractimpl]
 impl MasterFactory {
     /// Number of ledgers below which a `UsedSalts` entry's TTL is refreshed.
@@ -168,7 +172,7 @@ impl MasterFactory {
 
         // Check for salt reuse
         let salt_key = DataKey::UsedSalts(salt.clone());
-        if e.storage().persistent().has(&salt_key) {
+        if Self::salt_is_used(&e, &salt_key) {
             e.storage().instance().set(&DataKey::Deploying, &false);
             panic_with_error!(&e, MasterFactoryError::DuplicateSalt);
         }
@@ -186,6 +190,8 @@ impl MasterFactory {
 
         // Mark salt as used
         Self::record_salt_used(&e, &salt_key);
+        e.storage().persistent().set(&salt_key, &true);
+        Self::extend_used_salt_ttl(&e, &salt_key);
 
         // Update rate limit counter with overflow protection
         let new_deployments_count = deployments_count.checked_add(1)
@@ -193,6 +199,7 @@ impl MasterFactory {
                 e.storage().instance().set(&DataKey::Deploying, &false);
                 panic_with_error!(&e, MasterFactoryError::CounterOverflow)
             });
+        // Keyed by ledger sequence: the temporary counter is intentionally short-lived.
         e.storage().temporary().set(&deployments_key, &new_deployments_count);
         e.storage().temporary().extend_ttl(
             &deployments_key,
@@ -267,7 +274,7 @@ impl MasterFactory {
 
         // Check for salt reuse
         let salt_key = DataKey::UsedSalts(salt.clone());
-        if e.storage().persistent().has(&salt_key) {
+        if Self::salt_is_used(&e, &salt_key) {
             e.storage().instance().set(&DataKey::Deploying, &false);
             panic_with_error!(&e, MasterFactoryError::DuplicateSalt);
         }
@@ -284,6 +291,8 @@ impl MasterFactory {
 
         // Mark salt as used
         Self::record_salt_used(&e, &salt_key);
+        e.storage().persistent().set(&salt_key, &true);
+        Self::extend_used_salt_ttl(&e, &salt_key);
 
         // Update rate limit counter with overflow protection
         let new_deployments_count = deployments_count.checked_add(1)
@@ -291,6 +300,7 @@ impl MasterFactory {
                 e.storage().instance().set(&DataKey::Deploying, &false);
                 panic_with_error!(&e, MasterFactoryError::CounterOverflow)
             });
+        // Keyed by ledger sequence: the temporary counter is intentionally short-lived.
         e.storage().temporary().set(&deployments_key, &new_deployments_count);
         e.storage().temporary().extend_ttl(
             &deployments_key,
@@ -363,7 +373,7 @@ impl MasterFactory {
 
         // Check for salt reuse
         let salt_key = DataKey::UsedSalts(salt.clone());
-        if e.storage().persistent().has(&salt_key) {
+        if Self::salt_is_used(&e, &salt_key) {
             e.storage().instance().set(&DataKey::Deploying, &false);
             panic_with_error!(&e, MasterFactoryError::DuplicateSalt);
         }
@@ -380,6 +390,8 @@ impl MasterFactory {
 
         // Mark salt as used
         Self::record_salt_used(&e, &salt_key);
+        e.storage().persistent().set(&salt_key, &true);
+        Self::extend_used_salt_ttl(&e, &salt_key);
 
         // Update rate limit counter with overflow protection
         let new_deployments_count = deployments_count.checked_add(1)
@@ -387,6 +399,7 @@ impl MasterFactory {
                 e.storage().instance().set(&DataKey::Deploying, &false);
                 panic_with_error!(&e, MasterFactoryError::CounterOverflow)
             });
+        // Keyed by ledger sequence: the temporary counter is intentionally short-lived.
         e.storage().temporary().set(&deployments_key, &new_deployments_count);
         e.storage().temporary().extend_ttl(
             &deployments_key,
@@ -417,6 +430,13 @@ impl MasterFactory {
         e.storage().instance().set(&DataKey::Deploying, &false);
 
         factory_address
+    }
+
+    /// Report whether a deterministic deployment salt has been reserved.
+    /// A successful state-changing call also renews its persistence TTL.
+    /// Simulated read-only RPC calls do not commit TTL changes.
+    pub fn is_salt_used(e: Env, salt: BytesN<32>) -> bool {
+        Self::salt_is_used(&e, &DataKey::UsedSalts(salt))
     }
 
     /// Get TokenFactory address
@@ -612,6 +632,20 @@ impl MasterFactory {
         );
 
         e.storage().instance().set(&DataKey::FactoryCount, &new_count);
+    fn extend_used_salt_ttl(e: &Env, key: &DataKey) {
+        // Network limits can be lower than our preferred 90-day target.
+        let target = core::cmp::min(USED_SALT_TTL_TARGET, e.storage().max_ttl());
+        let threshold = core::cmp::min(USED_SALT_REFRESH_THRESHOLD, target);
+        e.storage().persistent().extend_ttl(key, threshold, target);
+    }
+
+    fn salt_is_used(e: &Env, key: &DataKey) -> bool {
+        if e.storage().persistent().has(key) {
+            Self::extend_used_salt_ttl(e, key);
+            true
+        } else {
+            false
+        }
     }
 
     // Helper function to check admin authorization
@@ -634,6 +668,7 @@ mod test {
     use soroban_sdk::{
         testutils::storage::Persistent as _, testutils::Address as _, Env,
     };
+    use soroban_sdk::{testutils::{Address as _, Ledger as _, storage::Persistent as _}, Env};
 
     fn setup_master_factory(env: &Env) -> (MasterFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -658,6 +693,28 @@ mod test {
             env.storage().persistent().get_ttl(&salt_key)
         });
         assert!(ttl >= MasterFactory::SALT_TTL_EXTEND_TO - 1);
+    fn test_used_salt_ttl_renews_on_repeat_successful_lookup() {
+        let env = Env::default();
+        // Give new entries a short initial TTL so renewal is observable.
+        env.ledger().set_min_persistent_entry_ttl(20);
+        let (client, _admin) = setup_master_factory(&env);
+        let salt = BytesN::from_array(&env, &[9u8; 32]);
+        let key = DataKey::UsedSalts(salt.clone());
+        let initial = env.as_contract(&client.address, || {
+            env.storage().persistent().set(&key, &true);
+            env.storage().persistent().get_ttl(&key)
+        });
+
+        assert!(client.is_salt_used(&salt));
+        let extended = env.as_contract(&client.address, || {
+            env.storage().persistent().get_ttl(&key)
+        });
+        assert!(extended > initial, "repeated salt check should renew TTL");
+        assert!(client.is_salt_used(&salt));
+        let repeat = env.as_contract(&client.address, || {
+            env.storage().persistent().get_ttl(&key)
+        });
+        assert!(repeat >= extended);
     }
 
     // ===== Constructor Tests =====
