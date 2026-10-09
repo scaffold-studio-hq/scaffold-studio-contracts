@@ -11,6 +11,9 @@ Production-ready Soroban blueprints powering our conversational factory system f
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Stellar](https://img.shields.io/badge/Stellar-Soroban-7D00FF)](https://stellar.org)
 [![Rust](https://img.shields.io/badge/Rust-1.89+-000000)](https://www.rust-lang.org/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![Stellar](https://img.shields.io/badge/Stellar-Soroban-7D00FF)](https://stellar.org)
+[![Rust](https://img.shields.io/badge/Rust-1.89.0-000000)](https://www.rust-lang.org/)
 
 [Quick Start](#quick-start) • [Architecture](#architecture) • [Contracts](#contracts) • [Deployment](#deployment)
 
@@ -28,6 +31,7 @@ Stellar Studio Contracts is a comprehensive suite of production-ready Soroban sm
 - 3 NFT Contract Types (Enumerable, Royalties, AccessControl)
 - 1 Governance System (MerkleVoting)
 - TypeScript clients generated at build time for all contracts (not checked into the repository)
+- Build-time TypeScript client generation with Stellar Scaffold (generated packages are not checked in)
 
 ---
 
@@ -142,6 +146,7 @@ Top-level factory that deploys other factories.
 - `get_deployed_factories()` - List all factory addresses
 
 **Generated TypeScript package:** `packages/master_factory`
+**Generated TypeScript package (after client build):** `packages/master_factory`
 
 ---
 
@@ -164,6 +169,7 @@ Deploys fungible token contracts with various access control mechanisms.
 - `get_token_count()` - Total deployment count
 
 **Generated TypeScript package:** `packages/token_factory`
+**Generated TypeScript package (after client build):** `packages/token_factory`
 
 ---
 
@@ -184,6 +190,7 @@ Deploys ERC-721 compatible NFT collection contracts.
 - `get_nft_count()` - Total deployment count
 
 **Generated TypeScript package:** `packages/nft_factory`
+**Generated TypeScript package (after client build):** `packages/nft_factory`
 
 ---
 
@@ -201,6 +208,7 @@ Deploys DAO governance contracts for on-chain voting.
 - `get_governance_by_admin(admin)` - Filter by admin
 
 **Generated TypeScript package:** `packages/governance_factory`
+**Generated TypeScript package (after client build):** `packages/governance_factory`
 
 ---
 
@@ -229,6 +237,7 @@ __constructor(admin, manager, initial_supply, name, symbol, decimals)
 - `mint(account, amount)` - Mint new tokens
 
 **Generated package:** `packages/fungible_pausable_example`
+**Generated package (after client build):** `packages/fungible_pausable_example`
 
 </details>
 
@@ -253,6 +262,7 @@ __constructor(admin, manager, initial_supply, cap, name, symbol, decimals)
 - Standard ERC-20 operations
 
 **Generated package:** `packages/fungible_capped_example`
+**Generated package (after client build):** `packages/fungible_capped_example`
 
 </details>
 
@@ -278,6 +288,7 @@ __constructor(admin, manager, initial_supply, name, symbol, decimals)
 - Standard ERC-20 operations with allowlist checks
 
 **Generated package:** `packages/fungible_allowlist_example`
+**Generated package (after client build):** `packages/fungible_allowlist_example`
 
 </details>
 
@@ -303,6 +314,7 @@ __constructor(admin, manager, initial_supply, name, symbol, decimals)
 - Standard ERC-20 operations with blocklist checks
 
 **Generated package:** `packages/fungible_blocklist_example`
+**Generated package (after client build):** `packages/fungible_blocklist_example`
 
 </details>
 
@@ -327,6 +339,7 @@ __constructor(asset, decimals_offset)
 - `total_assets()` - Total managed assets
 
 **Generated package:** `packages/fungible_vault_example`
+**Generated package (after client build):** `packages/fungible_vault_example`
 
 </details>
 
@@ -357,6 +370,7 @@ __constructor(owner)
 - Standard ERC-721 operations
 
 **Generated package:** `packages/nft_enumerable_example`
+**Generated package (after client build):** `packages/nft_enumerable_example`
 
 </details>
 
@@ -382,6 +396,7 @@ __constructor(admin)
 - Standard ERC-721 operations
 
 **Generated package:** `packages/nft_access_control_example`
+**Generated package (after client build):** `packages/nft_access_control_example`
 
 </details>
 
@@ -409,6 +424,7 @@ __constructor(admin, manager)
 - Standard ERC-721 operations
 
 **Generated package:** `packages/nft_royalties_example`
+**Generated package (after client build):** `packages/nft_royalties_example`
 
 **Note:** Contract exists but not currently exposed in frontend
 
@@ -440,6 +456,7 @@ __constructor(root_hash)
 - `get_vote_results()` - Get current vote tallies
 
 **Generated package:** `packages/merkle_voting`
+**Generated package (after client build):** `packages/merkle_voting`
 
 </details>
 
@@ -450,6 +467,7 @@ __constructor(root_hash)
 ### Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) 1.89+ (the version pinned in [`rust-toolchain.toml`](./rust-toolchain.toml))
+- [Rust](https://www.rust-lang.org/tools/install) 1.89.0 (pinned in `rust-toolchain.toml`)
 - [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools)
 - [Docker](https://www.docker.com/) (for local network)
 - [Node.js](https://nodejs.org/) 22+ (for TypeScript packages)
@@ -468,6 +486,8 @@ stellar contract build
 stellar scaffold build --build-clients
 
 # Compile the generated client packages
+# Generate TypeScript clients (requires stellar-scaffold-cli as in CI)
+stellar-scaffold build --build-clients
 npm run install:contracts
 ```
 
@@ -534,15 +554,18 @@ Output location: `target/wasm32v1-none/release/*.wasm`
 
 ### Build TypeScript Clients
 
+The checkout contains only `packages/.gitkeep`; generated client packages are intentionally ignored by `.gitignore`. Install `stellar-scaffold-cli` as configured by the CI workflow before running:
+
 ```bash
 # Generate TypeScript packages for all contracts
 stellar scaffold build --build-clients
 
 # Compile the generated packages
+stellar-scaffold build --build-clients
 npm run install:contracts
 ```
 
-Packages generated in: `packages/*/dist/`
+After generation, client package build outputs appear under `packages/*/dist/`. Those directories do not exist on a fresh clone.
 
 ### Build Single Contract
 
@@ -569,7 +592,9 @@ cargo test -- --nocapture
 cargo test --package token-factory
 ```
 
-### Test Coverage
+### Test Coverage and Known Gaps
+
+`cargo test` runs the Rust unit tests currently included in the workspace, but coverage is **not comprehensive across all factories**. In particular:
 
 Tests exist for the validation and access-control paths of the factory
 contracts: constructor initialization, WASM-hash configuration, deployment
@@ -595,6 +620,12 @@ cargo test -- --ignored
 
 The frontend has no unit-test runner configured; `npm run lint` and
 `npm run build` are the checks run in CI (see `.github/workflows/node.yml`).
+- Some upgrade tests are marked `#[ignore]` because they require real WASM artifacts, so they are not exercised by an ordinary `cargo test` invocation.
+- The current MasterFactory pause test does not assert the behavior it is named for.
+- NFTFactory tests currently have compilation issues; a successful run for another crate is not evidence that they pass.
+- The `tests/integration` assets are not covered by the plain workspace unit-test command.
+
+Before deployment, run and repair the relevant crate targets and integration tests against real compiled WASM rather than assuming constructor, upgrade, admin and pause paths are all verified.
 
 ---
 
@@ -686,6 +717,14 @@ npm run install:contracts
 ```
 
 The example below assumes that step has already run:
+The repository tracks only `packages/.gitkeep` initially. Client modules are **generated locally** and excluded from version control by `.gitignore`. Generate and build the clients first:
+
+```bash
+stellar-scaffold build --build-clients
+npm run install:contracts
+```
+
+The following TypeScript sample is illustrative **after** successful generation; there is no `packages/token_factory` module to import in a fresh checkout:
 
 ```typescript
 // Import generated client (only exists after the build step above)
@@ -723,12 +762,7 @@ await result.signAndSend();
 
 ### Package Contents
 
-Each generated package includes:
-- TypeScript type definitions
-- Parameter validation
-- Automatic XDR encoding/decoding
-- Transaction simulation
-- Error handling utilities
+Depending on the installed generator version, produced clients provide TypeScript contract bindings, XDR conversion helpers and transaction simulation utilities. Verify the generated package API before adopting this illustrative example; the package directories are not part of the checked-in source.
 
 ---
 
@@ -749,6 +783,8 @@ stellar-studio-contracts/
 │
 ├── packages/                   # Generated TypeScript clients (gitignored)
 │   └── .gitkeep                # Only this file is committed
+├── packages/                   # Generated clients are gitignored
+│   └── .gitkeep                # Only package path tracked in a fresh clone
 │
 ├── target/                     # Build output
 │   └── wasm32v1-none/release/  # Compiled WASM files
@@ -799,6 +835,8 @@ stellar-studio-contracts/
 **Repository Guides:**
 - [Soroban contract implementations](./contracts/) - Source code for deployed contract types
 - [Contributing](./CONTRIBUTING.md) - How to propose and review changes
+- [Stellar Studio Frontend](https://github.com/scaffold-studio-hq/scaffold-studio-frontend) - Web interface
+- [Stellar Studio MCP Server](https://github.com/scaffold-studio-hq/scaffold-studio-mcp) - AI tools backend
 
 **External Links:**
 - [Stellar Documentation](https://developers.stellar.org/)
@@ -825,6 +863,7 @@ Contributions welcome! Please follow these guidelines:
 ## License
 
 Licensed under the Apache License, Version 2.0 - see [LICENSE](LICENSE) file for details.
+Apache License, Version 2.0 - see [LICENSE](LICENSE) for the complete terms.
 
 ---
 
@@ -835,6 +874,7 @@ Licensed under the Apache License, Version 2.0 - see [LICENSE](LICENSE) file for
 [Contracts](.) • [Frontend](https://github.com/scaffold-studio-hq/stellar-studio-frontend) • [MCP Server](https://github.com/scaffold-studio-hq/stellar-studio-mcp-server)
 [Contracts](.)
 [Contracts source](./contracts/) • [Deployment guide](./DEPLOYMENT.md) • [Quick start](./QUICK_START.md)
+[Contracts](.) • [Frontend](https://github.com/scaffold-studio-hq/scaffold-studio-frontend) • [MCP Server](https://github.com/scaffold-studio-hq/scaffold-studio-mcp)
 
 Built with Rust and Soroban for Stellar
 
