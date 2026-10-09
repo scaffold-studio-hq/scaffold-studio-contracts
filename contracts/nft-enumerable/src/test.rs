@@ -8,6 +8,9 @@ fn create_client<'a>(e: &Env, owner: &Address) -> ExampleContractClient<'a> {
     let base_uri = String::from_str(e, "https://example.com/nft/");
     let name = String::from_str(e, "Enumerable NFT");
     let symbol = String::from_str(e, "ENUM");
+    let base_uri = String::from_str(e, "www.mytoken.com");
+    let name = String::from_str(e, "My Token");
+    let symbol = String::from_str(e, "TKN");
     let address = e.register(ExampleContract, (owner, base_uri, name, symbol));
     ExampleContractClient::new(e, &address)
 }
