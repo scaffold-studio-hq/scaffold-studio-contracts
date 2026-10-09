@@ -20,6 +20,9 @@ use soroban_sdk::{
 /// its deployment branch have therefore been removed. Re-introduce them
 /// together with the contract crate, its WASM upload in `setup-*.sh` and
 /// matching tests.
+/// Multisig is intentionally not exposed: the workspace does not ship a Multisig
+/// contract or a deployable WASM artifact. Restore the public variant only when
+/// its implementation and deployment tooling exist.
 
 #[contract]
 pub struct GovernanceFactory;
@@ -46,6 +49,8 @@ pub struct GovernanceConfig {
     pub governance_type: GovernanceType,
     pub admin: Address,
     pub root_hash: Option<BytesN<32>>, // For Merkle Voting
+    pub owners: Option<Vec<Address>>, // Reserved for future governance types
+    pub threshold: Option<u32>,       // Reserved for future governance types
     pub salt: BytesN<32>,
 }
 
@@ -491,6 +496,45 @@ impl GovernanceFactory {
         }
         .publish(&e);
     }
+
+    /// Get pending admin address
+    ///
+    /// # Returns
+    /// Optional pending admin address
+    pub fn get_pending_admin(e: Env) -> Option<Address> {
+        e.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
+    // Helper: Get WASM hash for governance type
+    fn get_wasm_for_type(e: &Env, governance_type: &GovernanceType) -> BytesN<32> {
+        let key = match governance_type {
+            GovernanceType::MerkleVoting => DataKey::MerkleVotingWasm,
+        };
+
+        e.storage()
+            .instance()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(e, GovernanceFactoryError::WasmNotSet))
+    }
+
+    // Helper: Validate Merkle Voting configuration.
+    fn validate_config(e: &Env, config: &GovernanceConfig) {
+        if config.root_hash.is_none() {
+            panic_with_error!(e, GovernanceFactoryError::InvalidConfig);
+        }
+    }
+
+    // Helper: Check admin authorization
+    fn require_admin(e: &Env, address: &Address) {
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, GovernanceFactoryError::AdminNotSet));
+        if admin != *address {
+            panic_with_error!(e, GovernanceFactoryError::NotAdmin);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -602,6 +646,9 @@ mod test {
             governance_type: GovernanceType::MerkleVoting,
             admin,
             root_hash: None,
+            root_hash: Some(BytesN::from_array(&env, &[2u8; 32])),
+            owners: None,
+            threshold: None,
             salt,
         };
 
