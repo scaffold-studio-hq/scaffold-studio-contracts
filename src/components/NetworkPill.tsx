@@ -23,17 +23,26 @@ const NetworkPill: React.FC = () => {
   const isNetworkMismatch = walletNetwork !== appNetwork;
 
   let title = "";
+  let statusDescription = `Wallet is connected to ${appNetwork}.`;
   let color = "#2ED06E";
   if (!address) {
     title = "Connect your wallet using this network.";
+    statusDescription = `Connect your wallet using the ${appNetwork} network.`;
     color = "#C1C7D0";
   } else if (isNetworkMismatch) {
     title = `Wallet is on ${walletNetwork}, connect to ${appNetwork} instead.`;
+    statusDescription = `Wallet is on ${walletNetwork}, connect to ${appNetwork} instead.`;
     color = "#FF3B30";
   }
 
+  // Include the mismatch message in the accessible name so assistive
+  // technology announces it, not just the network name.
+  const ariaLabel = `${appNetwork} network. ${statusDescription}`;
+
   return (
     <div
+      role="status"
+      aria-label={ariaLabel}
       style={{
         backgroundColor: bgColor,
         color: textColor,
