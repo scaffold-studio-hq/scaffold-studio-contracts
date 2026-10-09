@@ -54,6 +54,12 @@ export const getWasmContractData = async (wasmBytes: Buffer) => {
               ...result[sectionName],
               ...sectionContent,
             };
+            // A section may appear more than once in a WASM module. Preserve
+          // every decoded entry instead of overwriting earlier entries.
+          result[sectionName] = {
+            json: [...(result[sectionName].json ?? []), ...sectionData.json],
+            xdr: [...(result[sectionName].xdr ?? []), ...sectionData.xdr],
+          };
           }
         }
       }
