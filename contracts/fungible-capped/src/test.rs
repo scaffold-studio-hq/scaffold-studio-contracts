@@ -14,6 +14,14 @@ fn create_client<'a>(
     let name = String::from_str(e, "Capped Token");
     let symbol = String::from_str(e, "CAP");
     let decimals = 7;
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    token, Address, Env, IntoVal, String,
+};
+
+use crate::contract::{ExampleContract, ExampleContractClient};
+
+fn create_client<'a>(e: &Env, admin: &Address, cap: &i128) -> ExampleContractClient<'a> {
     let address = e.register(
         ExampleContract,
         (
@@ -24,6 +32,12 @@ fn create_client<'a>(
             name,
             symbol,
             decimals,
+            admin,
+            0i128,
+            cap,
+            String::from_str(e, "Capped Token"),
+            String::from_str(e, "CAP"),
+            7u32,
         ),
     );
     ExampleContractClient::new(e, &address)
@@ -32,11 +46,13 @@ fn create_client<'a>(
 #[test]
 fn mint_under_cap() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 1000;
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
     let initial_supply = 0;
     let client = create_client(&e, &admin, &manager, &initial_supply, &cap);
+    let client = create_client(&e, &admin, &cap);
     let user = Address::generate(&e);
 
     client.mint(&user, &500);
@@ -48,11 +64,13 @@ fn mint_under_cap() {
 #[test]
 fn mint_exact_cap() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 1000;
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
     let initial_supply = 0;
     let client = create_client(&e, &admin, &manager, &initial_supply, &cap);
+    let client = create_client(&e, &admin, &cap);
     let user = Address::generate(&e);
 
     client.mint(&user, &1000);
@@ -65,11 +83,13 @@ fn mint_exact_cap() {
 #[should_panic(expected = "Error(Contract, #106)")]
 fn mint_exceeds_cap() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 1000;
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
     let initial_supply = 0;
     let client = create_client(&e, &admin, &manager, &initial_supply, &cap);
+    let client = create_client(&e, &admin, &cap);
     let user = Address::generate(&e);
 
     // Attempt to mint 1001 tokens (would exceed cap)
@@ -80,11 +100,13 @@ fn mint_exceeds_cap() {
 #[should_panic(expected = "Error(Contract, #106)")]
 fn mint_multiple_exceeds_cap() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 1000;
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
     let initial_supply = 0;
     let client = create_client(&e, &admin, &manager, &initial_supply, &cap);
+    let client = create_client(&e, &admin, &cap);
     let user = Address::generate(&e);
 
     // Mint 600 tokens first
@@ -98,8 +120,34 @@ fn mint_multiple_exceeds_cap() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn mint_requires_owner_auth() {
+    let e = Env::default();
+    let cap = 1000;
+    let admin = Address::generate(&e);
+    let client = create_client(&e, &admin, &cap);
+    let user = Address::generate(&e);
+    let impostor = Address::generate(&e);
+
+    // Only the impostor authorizes; the stored owner never does. `mint` starts
+    // with `owner.require_auth()`, so the host must reject the call.
+    e.mock_auths(&[MockAuth {
+        address: &impostor,
+        invoke: &MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "mint",
+            args: (user.clone(), 500i128).into_val(&e),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.mint(&user, &500);
+}
+
+#[test]
 fn test_token_interface() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 1000_i128;
 
     let admin = Address::generate(&e);
@@ -121,7 +169,10 @@ fn test_token_interface() {
         ),
     );
     let client = token::Client::new(&e, &address);
+    let admin = Address::generate(&e);
+    let client = create_client(&e, &admin, &cap);
+    let token_client = token::Client::new(&e, &client.address);
     let user = Address::generate(&e);
 
-    assert_eq!(client.balance(&user), 0);
+    assert_eq!(token_client.balance(&user), 0);
 }
