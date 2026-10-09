@@ -604,8 +604,8 @@ The frontend has no unit-test runner configured; `npm run lint` and
 RPC: http://localhost:8000/rpc
 Passphrase: Standalone Network ; February 2017
 
-# Start network
-stellar network start standalone
+# Start network (the network passphrase remains "Standalone Network ; February 2017")
+stellar network start local
 
 # Deploy
 ./setup-local.sh
