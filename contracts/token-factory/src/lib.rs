@@ -28,6 +28,8 @@ pub enum DataKey {
     DeployedToken(u32),          // Indexed deployed-token record
     TokenCount,
     Paused, // Emergency pause
+    UsedSalts(BytesN<32>),       // Salts consumed by successful deployments
+    Paused,                      // Emergency pause
 }
 
 #[contracttype]
@@ -128,6 +130,12 @@ pub enum TokenFactoryError {
     UnexpectedCap = 11,
     CounterOverflow = 13,
     SupplyTooLarge = 15,
+    NoPendingAdmin = 16,
+    NotPendingAdmin = 17,
+    ContractPaused = 18,
+    /// The supplied deployment salt has already been used for a previous
+    /// successful deployment.
+    DuplicateSalt = 19,
 }
 
 #[contractimpl]
@@ -282,6 +290,13 @@ impl TokenFactory {
         // Reject deployments while the contract is paused
         factory_common::require_not_paused(&e);
 
+        // Reject a salt that has already produced a token: deterministic
+        // addressing means reusing it would target an existing contract address
+        let salt_key = DataKey::UsedSalts(config.salt.clone());
+        if e.storage().persistent().has(&salt_key) {
+            panic_with_error!(&e, TokenFactoryError::DuplicateSalt);
+        }
+
         // Get WASM hash based on token type
         let wasm_hash = Self::get_wasm_for_type(&e, &config.token_type);
 
@@ -348,6 +363,9 @@ impl TokenFactory {
                     .deploy_v2(wasm_hash, constructor_args)
             }
         };
+
+        // Mark the salt as consumed now that the deployment succeeded
+        e.storage().persistent().set(&salt_key, &true);
 
         // Update state AFTER successful deployment
         // Increment token count with overflow protection
@@ -1338,6 +1356,55 @@ mod test {
     }
 
     // ===== SECURITY TESTS =====
+
+    #[test]
+    #[ignore = "Requires real WASM deployment - move to integration tests"]
+    #[should_panic(expected = "Error(Contract, #19)")] // DuplicateSalt
+    fn test_security_salt_duplication_prevention() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin, wasm_hash) = setup_with_wasm(&env);
+        client.set_allowlist_wasm(&admin, &wasm_hash);
+
+        let deployer = Address::generate(&env);
+        let admin_addr = Address::generate(&env);
+        let salt = BytesN::from_array(&env, &[42u8; 32]);
+
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin_addr.clone(),
+            manager: admin_addr.clone(),
+            initial_supply: 1000,
+            cap: None,
+            name: String::from_str(&env, "Token1"),
+            symbol: String::from_str(&env, "TK1"),
+            decimals: 7,
+            salt: salt.clone(),
+            asset: None,
+            decimals_offset: None,
+        };
+
+        // First deployment should succeed
+        client.deploy_token(&deployer, &config);
+
+        // Second deployment with same salt should fail
+        let config2 = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin_addr.clone(),
+            manager: admin_addr.clone(),
+            initial_supply: 2000,
+            cap: None,
+            name: String::from_str(&env, "Token2"),
+            symbol: String::from_str(&env, "TK2"),
+            decimals: 7,
+            salt: salt.clone(), // Same salt!
+            asset: None,
+            decimals_offset: None,
+        };
+
+        client.deploy_token(&deployer, &config2); // Should panic with DuplicateSalt
+    }
 
     #[test]
     #[ignore = "Requires real WASM deployment - move to integration tests"]
