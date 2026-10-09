@@ -565,13 +565,30 @@ cargo test --package token-factory
 
 ### Test Coverage
 
-All factory contracts include comprehensive test suites covering:
-- Constructor initialization
-- WASM hash configuration
-- Deployment validation
-- Admin access control
-- Upgrade mechanisms
-- Emergency pause functionality
+Tests exist for the validation and access-control paths of the factory
+contracts: constructor initialization, WASM-hash configuration, deployment
+validation and admin access control, plus pausable and role checks on the
+individual token, NFT and governance contracts. These are the tests that run
+under a plain `cargo test`; they are not end-to-end coverage.
+
+The following are **not** exercised by `cargo test`:
+
+- **Upgrade paths** — the upgrade tests in `master-factory`, `token-factory`,
+  `nft-factory` and `governance-factory` are `#[ignore]`d with a note that they
+  require real WASM, so they are effectively placeholders today.
+- **End-to-end deploys** — every test in `tests/integration_tests.rs` is
+  `#[ignore]`d and currently just prints the expected flow; they can only run
+  once the WASM binaries are built and available.
+
+To build the WASM and run the ignored tests against it:
+
+```bash
+stellar contract build
+cargo test -- --ignored
+```
+
+The frontend has no unit-test runner configured; `npm run lint` and
+`npm run build` are the checks run in CI (see `.github/workflows/node.yml`).
 
 ---
 
