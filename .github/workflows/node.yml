@@ -10,6 +10,9 @@ env:
   PKG_CONFIG_PATH: /usr/lib/pkgconfig
   PUBLIC_STELLAR_NETWORK: local
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
