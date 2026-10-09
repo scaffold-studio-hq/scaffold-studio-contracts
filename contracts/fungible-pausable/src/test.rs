@@ -20,6 +20,11 @@ fn create_client<'a>(e: &Env, owner: &Address, initial_supply: i128) -> ExampleC
             String::from_str(e, "Pausable Token"),
             String::from_str(e, "PAUSE"),
             7u32,
+            manager,
+            initial_supply,
+            String::from_str(e, "My Token"),
+            String::from_str(e, "TKN"),
+            18u32,
         ),
     );
     ExampleContractClient::new(e, &address)
@@ -171,4 +176,46 @@ fn approved_allowance_still_works_after_unpause() {
     client.transfer_from(&spender, &owner, &recipient, &100);
     assert_eq!(client.balance(&recipient), 100);
     assert_eq!(client.allowance(&owner, &spender), 50);
+#[should_panic(expected = "Error(Contract, #2)")]
+fn mint_fails_with_defined_error_when_owner_missing() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    e.as_contract(&client.address, || {
+        e.storage().instance().remove(&crate::contract::OWNER);
+    });
+
+    client.mint(&owner, &500);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn pause_fails_with_defined_error_when_owner_missing() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    e.as_contract(&client.address, || {
+        e.storage().instance().remove(&crate::contract::OWNER);
+    });
+
+    client.pause(&owner);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #2)")]
+fn unpause_fails_with_defined_error_when_owner_missing() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    e.as_contract(&client.address, || {
+        e.storage().instance().remove(&crate::contract::OWNER);
+    });
+
+    client.unpause(&owner);
 }
