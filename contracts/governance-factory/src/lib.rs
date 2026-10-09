@@ -9,7 +9,17 @@ use soroban_sdk::{
 ///
 /// This contract manages deployment of governance contracts:
 /// - Merkle Voting (on-chain voting with merkle proofs)
-/// - Multisig (to be added when available)
+///
+/// # Multisig
+///
+/// The `Multisig` governance type is intentionally NOT exposed by this factory
+/// until a real multisig contract crate ships in this workspace. Previously a
+/// caller could point `set_multisig_wasm` at an arbitrary hash and
+/// `deploy_governance` would try to instantiate a template the repository never
+/// ships, producing a broken/unloadable instance. The variant, its setter and
+/// its deployment branch have therefore been removed. Re-introduce them
+/// together with the contract crate, its WASM upload in `setup-*.sh` and
+/// matching tests.
 
 #[contract]
 pub struct GovernanceFactory;
@@ -20,7 +30,6 @@ pub enum DataKey {
     Admin,
     PendingAdmin,              // Two-step admin transfer
     MerkleVotingWasm,
-    MultisigWasm,
     DeployedGovernance,
     GovernanceCount,
     Paused,                    // Emergency pause
@@ -30,7 +39,6 @@ pub enum DataKey {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GovernanceType {
     MerkleVoting,
-    Multisig,
 }
 
 #[contracttype]
@@ -39,8 +47,6 @@ pub struct GovernanceConfig {
     pub governance_type: GovernanceType,
     pub admin: Address,
     pub root_hash: Option<BytesN<32>>, // For Merkle Voting
-    pub owners: Option<Vec<Address>>, // For Multisig
-    pub threshold: Option<u32>,       // For Multisig
     pub salt: BytesN<32>,
 }
 
@@ -153,26 +159,6 @@ impl GovernanceFactory {
         .publish(&e);
     }
 
-    /// Set WASM hash for Multisig type
-    ///
-    /// # Arguments
-    /// * `admin` - Admin address (for authorization)
-    /// * `wasm_hash` - WASM hash of the Multisig contract
-    pub fn set_multisig_wasm(e: Env, admin: Address, wasm_hash: BytesN<32>) {
-        admin.require_auth();
-        Self::require_admin(&e, &admin);
-        e.storage()
-            .instance()
-            .set(&DataKey::MultisigWasm, &wasm_hash);
-
-        // Emit event
-        WasmUpdatedEvent {
-            governance_type_name: soroban_sdk::String::from_str(&e, "Multisig"),
-            wasm_hash: wasm_hash.clone(),
-        }
-        .publish(&e);
-    }
-
     /// Deploy a governance contract with specified configuration
     ///
     /// # Arguments
@@ -204,19 +190,6 @@ impl GovernanceFactory {
                     panic_with_error!(&e, GovernanceFactoryError::InvalidConfig)
                 });
                 let constructor_args: Vec<Val> = (root_hash,).into_val(&e);
-                e.deployer()
-                    .with_address(e.current_contract_address(), config.salt)
-                    .deploy_v2(wasm_hash, constructor_args)
-            }
-            GovernanceType::Multisig => {
-                // Multisig requires admin, owners, and threshold
-                let owners = config.owners.clone().unwrap_or_else(|| {
-                    panic_with_error!(&e, GovernanceFactoryError::InvalidConfig)
-                });
-                let threshold = config.threshold.unwrap_or_else(|| {
-                    panic_with_error!(&e, GovernanceFactoryError::InvalidConfig)
-                });
-                let constructor_args: Vec<Val> = (config.admin.clone(), owners, threshold).into_val(&e);
                 e.deployer()
                     .with_address(e.current_contract_address(), config.salt)
                     .deploy_v2(wasm_hash, constructor_args)
@@ -477,7 +450,6 @@ impl GovernanceFactory {
     fn get_wasm_for_type(e: &Env, governance_type: &GovernanceType) -> BytesN<32> {
         let key = match governance_type {
             GovernanceType::MerkleVoting => DataKey::MerkleVotingWasm,
-            GovernanceType::Multisig => DataKey::MultisigWasm,
         };
 
         e.storage()
@@ -493,20 +465,6 @@ impl GovernanceFactory {
                 // Merkle Voting must have root_hash
                 if config.root_hash.is_none() {
                     panic_with_error!(e, GovernanceFactoryError::InvalidConfig);
-                }
-            }
-            GovernanceType::Multisig => {
-                // Multisig must have owners and threshold
-                if config.owners.is_none() || config.threshold.is_none() {
-                    panic_with_error!(e, GovernanceFactoryError::InvalidConfig);
-                }
-
-                // Validate threshold
-                if let (Some(owners), Some(threshold)) = (&config.owners, config.threshold) {
-                    // Threshold must be > 0 and <= number of owners
-                    if threshold == 0 || threshold > owners.len() {
-                        panic_with_error!(e, GovernanceFactoryError::InvalidConfig);
-                    }
                 }
             }
         }
@@ -543,7 +501,6 @@ mod test {
         let wasm_hash = BytesN::from_array(env, &[1u8; 32]);
 
         client.set_merkle_voting_wasm(&admin, &wasm_hash);
-        client.set_multisig_wasm(&admin, &wasm_hash);
 
         (client, admin, wasm_hash)
     }
@@ -583,7 +540,6 @@ mod test {
 
         // Should not panic
         client.set_merkle_voting_wasm(&admin, &wasm_hash);
-        client.set_multisig_wasm(&admin, &wasm_hash);
     }
 
     #[test]
@@ -599,24 +555,11 @@ mod test {
         client.set_merkle_voting_wasm(&not_admin, &wasm_hash);
     }
 
-    #[test]
-    #[should_panic(expected = "Error(Contract, #1)")]
-    fn test_set_multisig_wasm_not_admin() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let (client, _admin) = setup_governance_factory(&env);
-        let not_admin = Address::generate(&env);
-        let wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
-
-        client.set_multisig_wasm(&not_admin, &wasm_hash);
-    }
-
     // ===== Validation Tests =====
 
     #[test]
     #[should_panic(expected = "Error(Contract, #4)")]
-    fn test_deploy_multisig_missing_owners() {
+    fn test_deploy_merkle_voting_missing_root_hash() {
         let env = Env::default();
         let (client, _admin, _wasm) = setup_with_wasm(&env);
 
@@ -625,91 +568,9 @@ mod test {
         let salt = BytesN::from_array(&env, &[2u8; 32]);
 
         let config = GovernanceConfig {
-            governance_type: GovernanceType::Multisig,
+            governance_type: GovernanceType::MerkleVoting,
             admin,
-            owners: None, // Missing
-            threshold: Some(2),
-            salt,
-        };
-
-        client.deploy_governance(&deployer, &config);
-    }
-
-    #[test]
-    #[should_panic(expected = "Error(Contract, #4)")]
-    fn test_deploy_multisig_missing_threshold() {
-        let env = Env::default();
-        let (client, _admin, _wasm) = setup_with_wasm(&env);
-
-        let deployer = Address::generate(&env);
-        let admin = Address::generate(&env);
-        let owner1 = Address::generate(&env);
-        let owner2 = Address::generate(&env);
-        let salt = BytesN::from_array(&env, &[2u8; 32]);
-
-        let mut owners = Vec::new(&env);
-        owners.push_back(owner1);
-        owners.push_back(owner2);
-
-        let config = GovernanceConfig {
-            governance_type: GovernanceType::Multisig,
-            admin,
-            owners: Some(owners),
-            threshold: None, // Missing
-            salt,
-        };
-
-        client.deploy_governance(&deployer, &config);
-    }
-
-    #[test]
-    #[should_panic(expected = "Error(Contract, #4)")]
-    fn test_deploy_multisig_threshold_zero() {
-        let env = Env::default();
-        let (client, _admin, _wasm) = setup_with_wasm(&env);
-
-        let deployer = Address::generate(&env);
-        let admin = Address::generate(&env);
-        let owner1 = Address::generate(&env);
-        let owner2 = Address::generate(&env);
-        let salt = BytesN::from_array(&env, &[2u8; 32]);
-
-        let mut owners = Vec::new(&env);
-        owners.push_back(owner1);
-        owners.push_back(owner2);
-
-        let config = GovernanceConfig {
-            governance_type: GovernanceType::Multisig,
-            admin,
-            owners: Some(owners),
-            threshold: Some(0), // Invalid: 0
-            salt,
-        };
-
-        client.deploy_governance(&deployer, &config);
-    }
-
-    #[test]
-    #[should_panic(expected = "Error(Contract, #4)")]
-    fn test_deploy_multisig_threshold_too_high() {
-        let env = Env::default();
-        let (client, _admin, _wasm) = setup_with_wasm(&env);
-
-        let deployer = Address::generate(&env);
-        let admin = Address::generate(&env);
-        let owner1 = Address::generate(&env);
-        let owner2 = Address::generate(&env);
-        let salt = BytesN::from_array(&env, &[2u8; 32]);
-
-        let mut owners = Vec::new(&env);
-        owners.push_back(owner1);
-        owners.push_back(owner2);
-
-        let config = GovernanceConfig {
-            governance_type: GovernanceType::Multisig,
-            admin,
-            owners: Some(owners),
-            threshold: Some(3), // Invalid: > owners.len()
+            root_hash: None, // Missing
             salt,
         };
 
@@ -730,8 +591,7 @@ mod test {
         let config = GovernanceConfig {
             governance_type: GovernanceType::MerkleVoting,
             admin,
-            owners: None,
-            threshold: None,
+            root_hash: None,
             salt,
         };
 
