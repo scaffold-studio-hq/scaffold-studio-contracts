@@ -39,6 +39,14 @@ fn create_client<'a>(e: &Env, admin: &Address, cap: &i128) -> ExampleContractCli
             String::from_str(e, "CAP"),
             7u32,
         ),
+fn create_client<'a>(e: &Env, cap: &i128) -> ExampleContractClient<'a> {
+    let admin = Address::generate(e);
+    let manager = Address::generate(e);
+    let name = String::from_str(e, "My Token");
+    let symbol = String::from_str(e, "TKN");
+    let address = e.register(
+        ExampleContract,
+        (admin, manager, 0i128, cap, name, symbol, 7u32),
     );
     ExampleContractClient::new(e, &address)
 }
@@ -166,6 +174,16 @@ fn test_token_interface() {
             name,
             symbol,
             decimals,
+    let address = e.register(
+        ExampleContract,
+        (
+            Address::generate(&e),
+            Address::generate(&e),
+            0i128,
+            cap,
+            String::from_str(&e, "My Token"),
+            String::from_str(&e, "TKN"),
+            7u32,
         ),
     );
     let client = token::Client::new(&e, &address);
