@@ -23,7 +23,7 @@ pub enum DataKey {
     EnumerableWasm,
     RoyaltiesWasm,
     AccessControlWasm,
-    DeployedNFTs,
+    DeployedNFT(u32),          // Indexed deployed-NFT record
     NFTCount,
     Paused, // Emergency pause
 }
@@ -121,6 +121,13 @@ pub enum NFTFactoryError {
 
 #[contractimpl]
 impl NFTFactory {
+    /// Ledger count below which a deployed-NFT record's TTL is refreshed.
+    /// Approximately 30 days at ~5s per ledger.
+    const RECORD_TTL_THRESHOLD: u32 = 518_400;
+    /// TTL (in ledgers) a deployed-NFT record is extended to. Approximately one
+    /// year at ~5s per ledger.
+    const RECORD_TTL_EXTEND_TO: u32 = 6_307_200;
+
     /// Initialize NFTFactory with admin address
     ///
     /// # Arguments
@@ -128,9 +135,8 @@ impl NFTFactory {
     pub fn __constructor(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
-        // Initialize empty NFTs list
-        let nfts: Vec<NFTInfo> = Vec::new(&e);
-        e.storage().instance().set(&DataKey::DeployedNFTs, &nfts);
+        // Deployed NFTs are stored under indexed persistent keys; only the
+        // small counter lives in instance storage.
         e.storage().instance().set(&DataKey::NFTCount, &0u32);
 
         // Initialize paused flag
@@ -309,19 +315,25 @@ impl NFTFactory {
             base_uri: config.base_uri.clone(),
         };
 
-        let mut nfts: Vec<NFTInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or_else(|| Vec::new(&e));
-        nfts.push_back(nft_info);
-        e.storage().instance().set(&DataKey::DeployedNFTs, &nfts);
-
         // Increment NFT count with overflow protection
         let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
         let new_count = count
             .checked_add(1)
             .unwrap_or_else(|| panic_with_error!(&e, NFTFactoryError::CounterOverflow));
+        let new_count = count.checked_add(1)
+            .unwrap_or_else(|| {
+                panic_with_error!(&e, NFTFactoryError::CounterOverflow)
+            });
+
+        // Store the record under its own indexed persistent key
+        let index_key = DataKey::DeployedNFT(count);
+        e.storage().persistent().set(&index_key, &nft_info);
+        e.storage().persistent().extend_ttl(
+            &index_key,
+            Self::RECORD_TTL_THRESHOLD,
+            Self::RECORD_TTL_EXTEND_TO,
+        );
+
         e.storage().instance().set(&DataKey::NFTCount, &new_count);
 
         // Emit event
@@ -341,10 +353,43 @@ impl NFTFactory {
     /// # Returns
     /// Vector of NFTInfo containing all deployed NFTs
     pub fn get_deployed_nfts(e: Env) -> Vec<NFTInfo> {
-        e.storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or(Vec::new(&e))
+        let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
+        let mut nfts = Vec::new(&e);
+        for i in 0..count {
+            if let Some(nft) = e
+                .storage()
+                .persistent()
+                .get::<_, NFTInfo>(&DataKey::DeployedNFT(i))
+            {
+                nfts.push_back(nft);
+            }
+        }
+        nfts
+    }
+
+    /// Get a page of deployed NFTs
+    ///
+    /// # Arguments
+    /// * `start` - Index of the first record to return
+    /// * `limit` - Maximum number of records to return
+    ///
+    /// # Returns
+    /// Vector of NFTInfo for the requested page
+    pub fn get_deployed_nfts_paginated(e: Env, start: u32, limit: u32) -> Vec<NFTInfo> {
+        let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
+        let mut nfts = Vec::new(&e);
+        let mut i = start;
+        while i < count && nfts.len() < limit {
+            if let Some(nft) = e
+                .storage()
+                .persistent()
+                .get::<_, NFTInfo>(&DataKey::DeployedNFT(i))
+            {
+                nfts.push_back(nft);
+            }
+            i += 1;
+        }
+        nfts
     }
 
     /// Get NFTs by type
@@ -355,16 +400,17 @@ impl NFTFactory {
     /// # Returns
     /// Vector of NFTInfo for the specified type
     pub fn get_nfts_by_type(e: Env, nft_type: NFTType) -> Vec<NFTInfo> {
-        let all_nfts: Vec<NFTInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or(Vec::new(&e));
-
+        let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
         let mut filtered = Vec::new(&e);
-        for nft in all_nfts.iter() {
-            if nft.nft_type == nft_type {
-                filtered.push_back(nft);
+        for i in 0..count {
+            if let Some(nft) = e
+                .storage()
+                .persistent()
+                .get::<_, NFTInfo>(&DataKey::DeployedNFT(i))
+            {
+                if nft.nft_type == nft_type {
+                    filtered.push_back(nft);
+                }
             }
         }
         filtered
@@ -378,16 +424,17 @@ impl NFTFactory {
     /// # Returns
     /// Vector of NFTInfo for NFTs owned by the address
     pub fn get_nfts_by_owner(e: Env, owner: Address) -> Vec<NFTInfo> {
-        let all_nfts: Vec<NFTInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::DeployedNFTs)
-            .unwrap_or(Vec::new(&e));
-
+        let count: u32 = e.storage().instance().get(&DataKey::NFTCount).unwrap_or(0);
         let mut filtered = Vec::new(&e);
-        for nft in all_nfts.iter() {
-            if nft.owner == owner {
-                filtered.push_back(nft);
+        for i in 0..count {
+            if let Some(nft) = e
+                .storage()
+                .persistent()
+                .get::<_, NFTInfo>(&DataKey::DeployedNFT(i))
+            {
+                if nft.owner == owner {
+                    filtered.push_back(nft);
+                }
             }
         }
         filtered
