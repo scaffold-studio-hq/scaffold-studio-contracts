@@ -8,6 +8,13 @@
 //! argument): every `mint` call must be authorized by that address.
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Symbol};
+//! Minting is restricted to the owner set at construction; the supply cap is
+//! a quantity bound, not an authorization boundary.
+
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, symbol_short, Address,
+    Env, String, Symbol,
+};
 use stellar_tokens::fungible::{
     capped::{check_cap, set_cap},
     Base, FungibleToken,
@@ -25,6 +32,13 @@ pub const OWNER: Symbol = symbol_short!("OWNER");
 
 #[contract]
 pub struct ExampleContract;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ExampleContractError {
+    OwnerNotSet = 1,
+}
 
 #[contractimpl]
 impl ExampleContract {
@@ -46,6 +60,8 @@ impl ExampleContract {
         e.storage().instance().set(&OWNER, &admin);
         // Persist the manager as a separate role instead of discarding it.
         e.storage().instance().set(&MANAGER, &manager);
+        // Store the admin as the owner for mint authorization
+        e.storage().instance().set(&OWNER, &admin);
 
         // Mint initial supply to admin
         Base::mint(e, &admin, initial_supply);
@@ -66,6 +82,8 @@ impl ExampleContract {
         let _ = manager; // Silence unused warning
     }
 
+    /// Mint new tokens. Only the owner stored at construction may call this;
+    /// the cap bounds the quantity, not the caller.
     pub fn mint(e: &Env, account: Address, amount: i128) {
         // When `ownable` module is available, the following check should be
         // equivalent to: `ownable::only_owner(&e);`
@@ -76,6 +94,8 @@ impl ExampleContract {
             .expect("owner should be set");
         owner.require_auth();
 
+            .unwrap_or_else(|| panic_with_error!(e, ExampleContractError::OwnerNotSet));
+        owner.require_auth();
         check_cap(e, amount);
         Base::mint(e, &account, amount);
     }
