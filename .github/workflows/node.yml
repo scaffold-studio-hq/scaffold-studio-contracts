@@ -93,6 +93,39 @@ jobs:
     - run: npm run build
     - name: Run tests
       run: npm test --if-present
+    - uses: actions/checkout@v4
+    - uses: actions/cache@v4
+      with:
+        path: '~/.cargo/bin/
+
+          runner/.cargo/bin/
+
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Start Stellar Quickstart
+      uses: stellar/quickstart@main
+      with:
+        tag: testing
+        network: local
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@v1.15.6
+    - name: Check for stellar-scaffold binary
+      run: "if ! command -v stellar-scaffold &> /dev/null; then\n  echo \"stellar-scaffold\
+        \ not found, installing...\"\n  cargo binstall stellar-scaffold-cli\nelse\n\
+        \  echo \"stellar-scaffold already installed. Clear cache to force reinstall.\"\
+        \nfi\n"
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
   integration-tests:
     runs-on: ubuntu-latest
     steps:
