@@ -5,12 +5,18 @@
 **Account**: me
 **Date**: November 4, 2025
 
+> **Local addresses are ephemeral.** The Standalone network runs inside Docker and
+> its state is discarded whenever the container is recreated, so every factory (and every
+> deployed token) gets a new address. The IDs below are examples only — always read the
+> current addresses from the `./setup-local.sh` output after starting or resetting the
+> network instead of copying them from this file.
+
 ---
 
-## Factory Contracts (Deployed & Ready)
+## Factory Contracts
 
 ### 1. MasterFactory
-**Contract ID**: `CCSDB3ONSEPAHAKUIAHNFYVAS4VYVFBI25PYXXLDWSOJOLKJFZJ2T6YB`
+**Contract ID**: printed by `./setup-local.sh` (local addresses are ephemeral)
 **WASM Hash**: `95cd7cdcfaefbdb11394e1c8ea5b302a406bf761da32b839582df751193a54b5`
 **Admin**: me
 **TypeScript Client**: ✅ Generated at `packages/master_factory`
@@ -29,7 +35,7 @@
 ---
 
 ### 2. TokenFactory
-**Contract ID**: `CDELLSGENBMQ5U2O42TR5IEATP4HXCXOVOCFWLILL6GM57FYTWBUC6PO`
+**Contract ID**: printed by `./setup-local.sh` (local addresses are ephemeral)
 **WASM Hash**: `71528a97a2ae17a145fb456bfc06087390a281c105ebdd4b4ac7c289bd2f5782`
 **Admin**: me
 **TypeScript Client**: ✅ Generated at `packages/token_factory`
@@ -49,7 +55,7 @@
 ---
 
 ### 3. NFTFactory
-**Contract ID**: `CBIIXP5MEIHVVMJEVVASX2QYFUBVFXBHPS6DIG2XYNSDXPYBGBCIHJMY`
+**Contract ID**: printed by `./setup-local.sh` (local addresses are ephemeral)
 **WASM Hash**: `41e5918e5b314ecbe1b2693ad00ef5da3dce3ff01f0cecded75b7f56cc268bdd`
 **Admin**: me
 **TypeScript Client**: ✅ Generated at `packages/nft_factory`
@@ -67,7 +73,7 @@
 ---
 
 ### 4. GovernanceFactory
-**Contract ID**: `CCSZQKRZCBH47VKJPHDYE3FZBRF75TQ2B4IKHVQPFDGIPFYVTZVQCHGL`
+**Contract ID**: printed by `./setup-local.sh` (local addresses are ephemeral)
 **WASM Hash**: `6403fbb7e31f84978ada554b1777ee372aa59bdcb491b00ca9406a5a9e11a17a`
 **Admin**: me
 **TypeScript Client**: ✅ Generated at `packages/governance_factory`
