@@ -6,6 +6,8 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, panic_with_error, symbol_short, Address, Env, String,
+    contract, contracterror, contractimpl, panic_with_error, symbol_short, Address,
+    Env, String,
 };
 use stellar_access::access_control::{self as access_control, AccessControl};
 use stellar_macros::{default_impl, only_admin, only_role};
@@ -25,6 +27,23 @@ pub enum ExampleContractError {
 
 #[contract]
 pub struct ExampleContract;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ExampleContractError {
+    InvalidBasisPoints = 1,
+}
+
+/// ERC-2981 basis-point denominator: 10_000 == 100%. Values above it would
+/// produce royalty payouts exceeding the sale price.
+const MAX_BASIS_POINTS: u32 = 10_000;
+
+fn check_basis_points(e: &Env, basis_points: u32) {
+    if basis_points > MAX_BASIS_POINTS {
+        panic_with_error!(e, ExampleContractError::InvalidBasisPoints);
+    }
+}
 
 #[contractimpl]
 impl ExampleContract {
@@ -49,6 +68,7 @@ impl ExampleContract {
     #[only_admin]
     pub fn mint_with_royalty(e: &Env, to: Address, receiver: Address, basis_points: u32) -> u32 {
         Self::require_valid_basis_points(e, basis_points);
+        check_basis_points(e, basis_points);
 
         // Mint token with sequential ID
         let token_id = Base::sequential_mint(e, &to);
@@ -83,6 +103,7 @@ impl NonFungibleRoyalties for ExampleContract {
     #[only_role(operator, "manager")]
     fn set_default_royalty(e: &Env, receiver: Address, basis_points: u32, operator: Address) {
         Self::require_valid_basis_points(e, basis_points);
+        check_basis_points(e, basis_points);
         Base::set_default_royalty(e, &receiver, basis_points);
     }
 
@@ -95,6 +116,7 @@ impl NonFungibleRoyalties for ExampleContract {
         operator: Address,
     ) {
         Self::require_valid_basis_points(e, basis_points);
+        check_basis_points(e, basis_points);
         Base::set_token_royalty(e, token_id, &receiver, basis_points);
     }
 
