@@ -30,6 +30,13 @@ fn create_client<'a>(
     let name = String::from_str(e, "My Token");
     let symbol = String::from_str(e, "TKN");
     let address = e.register(ExampleContract, (admin, manager, initial_supply, name, symbol, 7u32));
+    let name = String::from_str(e, "AllowList Token");
+    let symbol = String::from_str(e, "ALT");
+    let decimals = 7;
+    let address = e.register(
+        ExampleContract,
+        (admin, manager, initial_supply, &name, &symbol, decimals),
+    );
     ExampleContractClient::new(e, &address)
 }
 
@@ -175,6 +182,7 @@ fn allowlist_approve_override_works() {
 #[test]
 #[should_panic(expected = "Error(Contract, #113)")]
 fn cannot_transfer_from_after_disallowing_allowance_owner() {
+fn disallowed_spender_cannot_use_stale_allowance() {
     let e = Env::default();
     let admin = Address::generate(&e);
     let manager = Address::generate(&e);
@@ -236,4 +244,20 @@ fn disallowed_spender_can_still_use_allowance() {
 
     client.transfer_from(&spender, &admin, &user2, &transfer_amount);
     assert_eq!(client.balance(&user2), transfer_amount);
+    // user1 is an allowed recipient and user2 starts out allowed
+    client.allow_user(&user1, &manager);
+    client.allow_user(&user2, &manager);
+    assert!(client.allowed(&user1));
+    assert!(client.allowed(&user2));
+
+    // Admin grants user2 an allowance while user2 is allowed
+    client.approve(&admin, &user2, &transfer_amount, &1000);
+    assert_eq!(client.allowance(&admin, &user2), transfer_amount);
+
+    // Manager disallows the spender after the allowance exists
+    client.disallow_user(&user2, &manager);
+    assert!(!client.allowed(&user2));
+
+    // The stale allowance must not let user2 move admin's tokens
+    client.transfer_from(&user2, &admin, &user1, &transfer_amount);
 }
