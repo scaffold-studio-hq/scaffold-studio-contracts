@@ -1,123 +1,118 @@
 name: Build and Test
-
 on:
   push:
-    branches: ["main"]
-  pull_request:
-  workflow_dispatch:
-
+    branches:
+    - main
+  pull_request: null
+  workflow_dispatch: null
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
-
 env:
   CARGO_TERM_COLOR: always
   PKG_CONFIG_PATH: /usr/lib/pkgconfig
   PUBLIC_STELLAR_NETWORK: LOCAL
-  PUBLIC_STELLAR_NETWORK_PASSPHRASE: "Standalone Network ; February 2017"
+  PUBLIC_STELLAR_NETWORK_PASSPHRASE: Standalone Network ; February 2017
   PUBLIC_STELLAR_RPC_URL: http://localhost:8000/rpc
   PUBLIC_STELLAR_HORIZON_URL: http://localhost:8000
-
-permissions:
-  contents: read
-
 jobs:
   contracts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Run Rust contract tests
-        run: cargo test --workspace --locked
+    - uses: actions/checkout@v7
+    - uses: actions/cache@v6
+      with:
+        path: '~/.cargo/bin/
 
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Run Rust contract tests
+      run: cargo test --workspace --locked
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup target add wasm32v1-none
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Start Stellar Quickstart
-        uses: stellar/quickstart@3a367f3f009f3ec4199889e922d28ce70add1753 # main @ 2026-10-06
-        with:
-          tag: testing
-          network: local
-      - run: sudo apt-get update && sudo apt-get install -y libudev-dev libdbus-1-dev pkg-config
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@38e8f5e4c386b611d51e8aa997b9a06a3c8eb67a # v1.15.6
-      - name: Check for stellar-scaffold binary
-        run: |
-          if ! command -v stellar-scaffold &> /dev/null; then
-            echo "stellar-scaffold not found, installing..."
-            cargo binstall stellar-scaffold-cli --version 0.0.27
-          else
-            echo "stellar-scaffold already installed. Clear cache to force reinstall."
-          fi
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Install cargo-audit
-        run: cargo binstall --no-confirm cargo-audit
-      - name: Audit Rust dependencies (RustSec advisories)
-        # Allow-list an unavoidable advisory by appending `--ignore RUSTSEC-YYYY-NNNN` to the
-        # command below, with a comment here naming the crate, the reason, and the date the
-        # exception should be revisited. Do not remove the step to silence a failure.
-        run: cargo audit
-      - name: Audit npm production dependencies
-        # Gates on high and critical advisories in production dependencies. Record any
-        # temporary exception here with a dated comment rather than lowering the audit level.
-        run: npm audit --omit=dev --audit-level=high
-      - run: npm run lint
-      - run: npx prettier . --check
-      - name: Build clients before building the project
-        run: STELLAR_SCAFFOLD_ENV=development stellar-scaffold build --build-clients
-      - run: npm run install:contracts
-      - run: npm run build
-      - name: Run tests
-        run: npm test --if-present
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: '~/.cargo/bin/
 
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - run: rustup target add wasm32v1-none
+    - name: Run clippy
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    - name: Start Stellar Quickstart
+      uses: stellar/quickstart@3a367f3f009f3ec4199889e922d28ce70add1753
+      with:
+        tag: testing
+        network: local
+    - run: sudo apt-get update && sudo apt-get install -y libudev-dev libdbus-1-dev
+        pkg-config
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@c06f6a0003f7c6165a00c89d1697731c9e8a5c72
+    - name: Check for stellar-scaffold binary
+      run: "if ! command -v stellar-scaffold &> /dev/null; then\n  echo \"stellar-scaffold\
+        \ not found, installing...\"\n  cargo binstall stellar-scaffold-cli --version\
+        \ 0.0.27\nelse\n  echo \"stellar-scaffold already installed. Clear cache to\
+        \ force reinstall.\"\nfi\n"
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      with:
+        node-version: 22
+        cache: npm
+    - run: npm ci
+    - name: Install cargo-audit
+      run: cargo binstall --no-confirm cargo-audit
+    - name: Audit Rust dependencies (RustSec advisories)
+      run: cargo audit
+    - name: Audit npm production dependencies
+      run: npm audit --omit=dev --audit-level=high
+    - run: npm run lint
+    - run: npx prettier . --check
+    - name: Build clients before building the project
+      run: STELLAR_SCAFFOLD_ENV=development stellar-scaffold build --build-clients
+    - run: npm run install:contracts
+    - run: npm run build
+    - name: Run tests
+      run: npm test --if-present
   integration-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup target add wasm32v1-none
-      - name: Build workspace WASM artifacts
-        run: cargo build --release --target wasm32v1-none --workspace
-      - name: Run ignored integration tests
-        run: cargo test --test integration_tests -- --ignored --test-threads=1
+    - uses: actions/checkout@v7
+    - uses: actions/cache@v6
+      with:
+        path: '~/.cargo/bin/
+
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+    - run: rustup target add wasm32v1-none
+    - name: Build workspace WASM artifacts
+      run: cargo build --release --target wasm32v1-none --workspace
+    - name: Run ignored integration tests
+      run: cargo test --test integration_tests -- --ignored --test-threads=1
