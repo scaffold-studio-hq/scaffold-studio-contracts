@@ -5,7 +5,13 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 use crate::contract::{ExampleContract, ExampleContractClient};
 
 fn create_client<'a>(e: &Env, owner: &Address, initial_supply: i128) -> ExampleContractClient<'a> {
-    let address = e.register(ExampleContract, (owner, initial_supply));
+    let manager = Address::generate(e);
+    let name = String::from_str(e, "My Token");
+    let symbol = String::from_str(e, "TKN");
+    let address = e.register(
+        ExampleContract,
+        (owner, manager, initial_supply, name, symbol, 18u32),
+    );
     ExampleContractClient::new(e, &address)
 }
 
