@@ -818,20 +818,23 @@ mod test {
     // Note: Similar to TokenFactory security tests, adapted for MasterFactory
 
     #[test]
+    #[should_panic(expected = "Error(Contract, #10)")] // ContractPaused
     fn test_security_pause_prevents_deployments() {
         let env = Env::default();
         env.mock_all_auths();
 
         let (client, admin) = setup_master_factory(&env);
-        let _wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
-        let _salt = BytesN::from_array(&env, &[2u8; 32]);
 
-        // Pause the contract
+        // The pause check runs before the WASM hash is consumed, so an
+        // arbitrary hash is enough: if the Paused guard were removed this
+        // call would fail with a different error and the expectation below
+        // would no longer match.
+        let wasm_hash = BytesN::from_array(&env, &[1u8; 32]);
+        let salt = BytesN::from_array(&env, &[2u8; 32]);
+
         client.pause(&admin);
 
-        // Try to deploy - should fail
-        // Note: In real test, this would panic with ContractPaused error
-        // Simplified test just verifies pause mechanism exists
+        client.deploy_token_factory(&admin, &wasm_hash, &salt);
     }
 
     #[test]
