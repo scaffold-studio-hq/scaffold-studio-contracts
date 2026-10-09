@@ -113,6 +113,9 @@ stellar contract invoke \
 # `salt` is 32 random bytes encoded as a 64-character hex string.
 SALT=$(openssl rand -hex 32)
 
+# The config is complete JSON. Generate a unique 32-byte salt for this deployment.
+ACCOUNT="$(stellar keys address me)"
+SALT_HEX="$(openssl rand -hex 32)"
 stellar contract invoke \
   --id CAHLJEQUCNTV7JPAPCMLCBIHOX7FFB57DUARJ6XGTW27FPCVKKY7JM2A \
   --source me \
@@ -120,7 +123,11 @@ stellar contract invoke \
   -- deploy_token \
   --deployer $(stellar keys address me) \
   --config '{"token_type":{"tag":"Pausable"},"admin":"'$(stellar keys address me)'","manager":"'$(stellar keys address me)'","initial_supply":"1000000","cap":null,"name":"Test","symbol":"TST","decimals":7,"salt":"'"$SALT"'","asset":null,"decimals_offset":null}'
+  --deployer "$ACCOUNT" \
+  --config "$(printf '{"token_type":{"tag":"Pausable"},"admin":"%s","manager":"%s","name":"Test","symbol":"TST","decimals":7,"initial_supply":"1000000","salt":"%s","cap":null,"asset":null,"decimals_offset":null}' "$ACCOUNT" "$ACCOUNT" "$SALT_HEX")"
 ```
+
+The tagged `token_type` enum matches the generated client shape. `salt` is a 64-character hex string representing 32 random bytes, and must be new for every deployment.
 
 ---
 

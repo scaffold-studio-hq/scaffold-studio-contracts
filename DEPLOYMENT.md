@@ -36,6 +36,12 @@
 - `get_pending_admin()` - Read the pending admin, if any
 
 **Admin transfer:** the role moves in two steps - the current admin calls `initiate_admin_transfer`, then the nominated address must call `accept_admin_transfer`; a pending handover can be cancelled with `cancel_admin_transfer` before it is accepted, and `get_pending_admin` reports the address mid-handover.
+- `initiate_admin_transfer(current_admin, new_admin)` - Current admin proposes a replacement; requires the current admin's authorization.
+- `get_pending_admin()` - Returns the pending new admin, or `None` if there is no proposal.
+- `accept_admin_transfer(new_admin)` - Pending new admin authorizes acceptance; the handoff takes effect only after this call.
+- `cancel_admin_transfer(current_admin)` - Current admin cancels a pending proposal.
+
+Admin transfers use a **two-step handshake**: the current admin initiates, then the proposed new admin accepts. A direct `transfer_admin` entrypoint does not exist.
 
 ---
 
@@ -161,13 +167,20 @@ set `asset` to the underlying token contract address and `decimals_offset` to an
 ```bash
 # Deploy an Allowlist token. Replace <admin-address>/<manager-address> with Stellar
 # account IDs and the salt with 32 random bytes (64 hex characters).
+# Every field of TokenConfig is present. Use a fresh 32-byte salt for each deployment.
+ADMIN="$(stellar keys address me)"
+SALT_HEX="$(openssl rand -hex 32)"
 stellar contract invoke \
   --id token_factory \
   -- \
   deploy_token \
   --deployer me \
   --config '{"token_type":{"tag":"Allowlist"},"admin":"<admin-address>","manager":"<manager-address>","initial_supply":"1000000","cap":null,"name":"My Token","symbol":"MTK","decimals":7,"salt":"0000000000000000000000000000000000000000000000000000000000000000","asset":null,"decimals_offset":null}'
+  --deployer "$ADMIN" \
+  --config "$(printf '{"token_type":{"tag":"Allowlist"},"admin":"%s","manager":"%s","initial_supply":"1000000","cap":null,"name":"Example","symbol":"EXM","decimals":7,"salt":"%s","asset":null,"decimals_offset":null}' "$ADMIN" "$ADMIN" "$SALT_HEX")"
 ```
+
+The `token_type` contract argument is a tagged enum (`{"tag":"Allowlist"}`), not a bare `"Allowlist"` string. The salt is 32 random bytes encoded in hex, not placeholder text.
 
 ---
 
