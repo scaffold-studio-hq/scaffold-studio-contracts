@@ -11,6 +11,16 @@ fn create_client<'a>(e: &Env, owner: &Address, initial_supply: i128) -> ExampleC
     let address = e.register(
         ExampleContract,
         (owner, manager, initial_supply, name, symbol, 18u32),
+    let address = e.register(
+        ExampleContract,
+        (
+            owner.clone(),
+            owner.clone(),
+            initial_supply,
+            String::from_str(e, "Pausable Token"),
+            String::from_str(e, "PAUSE"),
+            7u32,
+        ),
     );
     ExampleContractClient::new(e, &address)
 }
@@ -23,9 +33,9 @@ fn initial_state() {
 
     assert_eq!(client.total_supply(), 1000);
     assert_eq!(client.balance(&owner), 1000);
-    assert_eq!(client.symbol(), String::from_str(&e, "TKN"));
-    assert_eq!(client.name(), String::from_str(&e, "My Token"));
-    assert_eq!(client.decimals(), 18);
+    assert_eq!(client.symbol(), String::from_str(&e, "PAUSE"));
+    assert_eq!(client.name(), String::from_str(&e, "Pausable Token"));
+    assert_eq!(client.decimals(), 7);
     assert!(!client.paused());
 }
 
@@ -130,4 +140,35 @@ fn burn_fails_when_paused() {
     e.mock_all_auths();
     client.pause(&owner);
     client.burn(&owner, &200);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1000)")]
+fn approve_fails_when_paused() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let spender = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    client.pause(&owner);
+    client.approve(&owner, &spender, &100, &100);
+}
+
+#[test]
+fn approved_allowance_still_works_after_unpause() {
+    let e = Env::default();
+    let owner = Address::generate(&e);
+    let spender = Address::generate(&e);
+    let recipient = Address::generate(&e);
+    let client = create_client(&e, &owner, 1000);
+
+    e.mock_all_auths();
+    client.approve(&owner, &spender, &150, &100);
+    client.pause(&owner);
+    assert_eq!(client.allowance(&owner, &spender), 150);
+    client.unpause(&owner);
+    client.transfer_from(&spender, &owner, &recipient, &100);
+    assert_eq!(client.balance(&recipient), 100);
+    assert_eq!(client.allowance(&owner, &spender), 50);
 }
