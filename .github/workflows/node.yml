@@ -152,6 +152,29 @@ jobs:
         cargo binstall --no-confirm --locked --force stellar-scaffold-cli@0.0.26
 
         '
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c
+      with:
+        path: '~/.cargo/bin/
+
+          runner/.cargo/bin/
+
+          ~/.cargo/registry/index/
+
+          ~/.cargo/registry/cache/
+
+          ~/.cargo/git/db/
+
+          target/
+
+          '
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@38e8f5e4c386b611d51e8aa997b9a06a3c8eb67a
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: 22
+        cache: npm
   integration-tests:
     runs-on: ubuntu-latest
     steps:
