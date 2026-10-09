@@ -807,6 +807,13 @@ mod test {
         testutils::{Address as _, Events},
         Env, String,
     };
+    use soroban_sdk::{testutils::{Address as _, Events}, Env, String};
+    // The Allowlist token WASM is produced by `stellar contract build` into the
+    // workspace `target/wasm32v1-none/release/` directory.
+    mod fungible_allowlist_wasm {
+        soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/fungible_allowlist_example.wasm");
+    }
+
 
     fn setup_factory(env: &Env) -> (TokenFactoryClient, Address) {
         let admin = Address::generate(env);
@@ -829,6 +836,99 @@ mod test {
 
         (client, admin, wasm_hash)
     }
+
+    // ===== validate_string_chars Control-Byte Tests =====
+
+    #[test]
+    fn test_validate_string_chars_rejects_other_control_bytes() {
+        let env = Env::default();
+        // 0x07 (bell) is a control byte outside the tab/newline/CR allow-list.
+        assert!(!TokenFactory::validate_string_chars(
+            &env,
+            &String::from_bytes(&env, &[84, 101, 115, 116, 7, 88])
+        ));
+        // The null byte stays rejected as well.
+        assert!(!TokenFactory::validate_string_chars(
+            &env,
+            &String::from_bytes(&env, &[84, 0, 88])
+        ));
+    }
+
+    #[test]
+    fn test_validate_string_chars_accepts_tab_newline_and_cr() {
+        let env = Env::default();
+        // Tab (9), newline (10) and carriage return (13) are deliberately allowed.
+        assert!(TokenFactory::validate_string_chars(
+            &env,
+            &String::from_bytes(&env, &[84, 9, 88])
+        ));
+        assert!(TokenFactory::validate_string_chars(
+            &env,
+            &String::from_bytes(&env, &[84, 10, 88])
+        ));
+        assert!(TokenFactory::validate_string_chars(
+            &env,
+            &String::from_bytes(&env, &[84, 13, 88])
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #5)")] // InvalidName
+    fn test_validation_name_with_control_byte() {
+        let env = Env::default();
+        let (client, admin, _) = setup_with_wasm(&env);
+
+        // "Test\x07X" contains a control byte that is not allowed.
+        let name = String::from_bytes(&env, &[84, 101, 115, 116, 7, 88]);
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager: admin.clone(),
+            initial_supply: 1_000_000,
+            cap: None,
+            name,
+            symbol: String::from_str(&env, "TEST"),
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[71u8; 32]),
+            asset: None,
+            decimals_offset: None,
+        };
+
+        client.deploy_token(&admin, &config);
+    }
+
+    #[test]
+    fn test_deploy_token_accepts_newline_and_tab() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, admin) = setup_factory(&env);
+        let allowlist_hash = env.deployer().upload_contract_wasm(fungible_allowlist_wasm::WASM);
+        client.set_allowlist_wasm(&admin, &allowlist_hash);
+
+        // "Line\nBreak" and "TS\tT" must pass validation and deploy.
+        let name = String::from_bytes(&env, &[76, 105, 110, 101, 10, 66, 114, 101, 97, 107]);
+        let symbol = String::from_bytes(&env, &[84, 83, 9, 84]);
+        let config = TokenConfig {
+            token_type: TokenType::Allowlist,
+            admin: admin.clone(),
+            manager: admin.clone(),
+            initial_supply: 1_000,
+            cap: None,
+            name,
+            symbol,
+            decimals: 7,
+            salt: BytesN::from_array(&env, &[72u8; 32]),
+            asset: None,
+            decimals_offset: None,
+        };
+
+        let token_address = client.deploy_token(&admin, &config);
+
+        assert_eq!(client.get_token_count(), 1);
+        assert_eq!(client.get_deployed_tokens().get(0).unwrap().address, token_address);
+    }
+
 
     // ===== Constructor Tests =====
 
