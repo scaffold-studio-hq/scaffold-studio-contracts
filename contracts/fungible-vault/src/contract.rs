@@ -1,18 +1,39 @@
 //! Tokenized Vault Example Contract.
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, Address, Env, String};
 use stellar_macros::default_impl;
 use stellar_tokens::{
     fungible::{Base, FungibleToken},
-    vault::{FungibleVault, Vault},
+    vault::{FungibleVault, Vault, VaultTokenError, MAX_DECIMALS_OFFSET},
 };
 
 #[contract]
 pub struct ExampleContract;
 
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum ExampleContractError {
+    /// The vault was configured with its own address as the underlying asset.
+    InvalidAsset = 1,
+}
+
 #[contractimpl]
 impl ExampleContract {
     pub fn __constructor(e: &Env, asset: Address, decimals_offset: u32) {
+        // Validate the configuration before writing any state.
+        // `Vault::set_decimals_offset` enforces the same bound, but checking up
+        // front makes the constructor fail fast with the vault's defined error.
+        if decimals_offset > MAX_DECIMALS_OFFSET {
+            panic_with_error!(e, VaultTokenError::VaultMaxDecimalsOffsetExceeded);
+        }
+        // A vault cannot be its own underlying asset. The asset is otherwise
+        // validated by the `decimals()` query below, which requires it to be a
+        // deployed token contract.
+        if asset == e.current_contract_address() {
+            panic_with_error!(e, ExampleContractError::InvalidAsset);
+        }
+
         // Asset and decimal offset should be configured once during initialization.
         Vault::set_asset(e, asset);
         Vault::set_decimals_offset(e, decimals_offset);

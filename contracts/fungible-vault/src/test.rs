@@ -396,3 +396,25 @@ fn test_redeem_exceeds_max() {
     // Try to redeem more shares than user has
     vault_client.redeem(&(shares + 1), &user, &user, &user);
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #409)")]
+fn test_vault_rejects_decimals_offset_above_max() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let asset_client = create_asset_client(&e, 1_000_000_000_000_000_000i128, &admin);
+    let asset_address = asset_client.address.clone();
+
+    // MAX_DECIMALS_OFFSET is 10, so 11 must be rejected at construction.
+    create_vault_client(&e, &asset_address, 11);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_vault_rejects_itself_as_asset() {
+    let e = Env::default();
+    let vault_address = Address::generate(&e);
+
+    // The constructor sees its own address as the underlying asset.
+    e.register_at(&vault_address, ExampleContract, (vault_address.clone(), 6u32));
+}
